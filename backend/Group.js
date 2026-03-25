@@ -27,17 +27,33 @@ app.get("/", (req, res) =>{
 })
 
 let count = 0
+const sectionMembers = {}
+
 io.on("connection", (socket) =>{
     console.log("User Connected : ", socket.id);
     count++
     console.log("count :", count)
-    socket.on("join_group", (groupId)=>{
-        socket.join(groupId)
+
+    socket.on("join_section", ({ section, username })=>{
+        const roomName = "section_" + section
+        socket.join(roomName)
+
+        socket.section = section
+        socket.username = username || socket.id
+
+        if (!sectionMembers[section]) {
+            sectionMembers[section] = []
+        }
+        if (!sectionMembers[section].includes(socket.username)) {
+            sectionMembers[section].push(socket.username)
+        }
+
+        io.to(roomName).emit("members_update", sectionMembers[section])
     })
 
     socket.on("send_message", async (data) =>{
         const messageData = {
-            groupId: data.groupId,
+            section: data.section,
             sender: data.sender || "anonymous",
             message: data.message,
             time: new Date()
@@ -45,7 +61,7 @@ io.on("connection", (socket) =>{
 
         try {
             const saved = await Message.create(messageData)
-            io.to(data.groupId).emit("receive_message", saved)
+            io.to("section_" + data.section).emit("receive_message", saved)
         } catch(err) {
             console.error("send_message error:", err)
             socket.emit("error", { message: "Failed to save message" })
@@ -54,11 +70,18 @@ io.on("connection", (socket) =>{
 
     socket.on("disconnect", () =>{
         console.log('User Disconnected:', socket.id);
+
+        const section = socket.section
+        const username = socket.username
+        if (section && sectionMembers[section]) {
+            sectionMembers[section] = sectionMembers[section].filter((u) => u !== username)
+            io.to("section_" + section).emit("members_update", sectionMembers[section])
+        }
     })
 })
 
 
-
-server.listen(5000, () =>{
-    console.log("Server running on port 5000")
+const port = 3000
+server.listen(port, () =>{
+    console.log("Server running on port ", port)
 })

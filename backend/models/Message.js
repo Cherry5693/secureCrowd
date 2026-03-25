@@ -2,7 +2,7 @@
 const mongoose = require("mongoose")
 
 const messageSchema = mongoose.Schema({
-    groupId: String, 
+    section: String, 
     sender : String, 
     message : String,
     time : { type: Date, default: Date.now }

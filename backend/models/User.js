@@ -8,6 +8,14 @@ const userSchema = new mongoose.Schema({
     password : {
         type : String,
         required : true
+    },
+    seat: {
+        type: String,
+        required: true
+    },
+    section: {
+        type: String,
+        required: true
     }
 })
 

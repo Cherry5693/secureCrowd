@@ -1,11 +1,13 @@
 import { useState } from "react";
 
-const API_BASE = "http://localhost:5000/api/users";
+const API_BASE = `${import.meta.env.VITE_API_URL}/api/users`;
 
 function Auth({ onAuthSuccess }) {
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [seat, setSeat] = useState("");
+  const [section, setSection] = useState("");
   const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
@@ -14,12 +16,19 @@ function Auth({ onAuthSuccess }) {
       setError("Username and password are required");
       return;
     }
+    if (mode === "register" && (!seat.trim() || !section.trim())) {
+      setError("Seat and section are required for registration");
+      return;
+    }
 
     const url = mode === "login" ? `${API_BASE}/login` : `${API_BASE}/register`;
+    const body = mode === "login" 
+      ? { username, password } 
+      : { username, password, seat, section };
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(body),
     });
 
     const json = await res.json();
@@ -51,6 +60,20 @@ function Auth({ onAuthSuccess }) {
           placeholder="Password"
           autoComplete={mode === "login" ? "current-password" : "new-password"}
         />
+        {mode === "register" && (
+          <>
+            <input
+              value={seat}
+              onChange={(e) => setSeat(e.target.value)}
+              placeholder="Seat (e.g., B12)"
+            />
+            <input
+              value={section}
+              onChange={(e) => setSection(e.target.value)}
+              placeholder="Section (e.g., B)"
+            />
+          </>
+        )}
         <button type="submit">{mode === "login" ? "Login" : "Register"}</button>
       </form>
 
