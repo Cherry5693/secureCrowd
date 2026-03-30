@@ -1,21 +1,25 @@
 {
-  "name": "backend",
+  "name": "securecrowd-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "SecureCrowd real-time emergency communication backend",
+  "main": "Group.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node Group.js",
+    "dev": "nodemon Group.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.3.2",
     "nodemon": "^3.1.14",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "uuid": "^9.0.1"
   }
 }

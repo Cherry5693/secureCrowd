@@ -1,22 +1,12 @@
 const mongoose = require("mongoose")
 
 const userSchema = new mongoose.Schema({
-    username : {
-        type : String, 
-        required : true
-    },
-    password : {
-        type : String,
-        required : true
-    },
-    seat: {
-        type: String,
-        required: true
-    },
-    section: {
-        type: String,
-        required: true
-    }
+    username: { type: String, required: true, unique: true, trim: true },
+    password: { type: String, required: true },
+    role: { type: String, enum: ['organizer', 'attendee'], default: 'organizer' },
+    seat: { type: String, default: '' },
+    section: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now },
 })
 
 const User = mongoose.model("User", userSchema)
