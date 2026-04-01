@@ -8,7 +8,7 @@ const messageSchema = new mongoose.Schema({
   message: { type: String, required: true },
   messageType: {
     type: String,
-    enum: ['normal', 'emergency', 'private', 'image'],
+    enum: ['normal', 'emergency', 'private', 'image', 'announcement'],
     default: 'normal',
   },
   urgencyLevel: {
@@ -20,6 +20,11 @@ const messageSchema = new mongoose.Schema({
   isEmergency: { type: Boolean, default: false },
   isPrivate: { type: Boolean, default: false },
   privateRoomId: String,
+  privateChatMode: {
+    type: String,
+    enum: ['open', 'controlled'],
+    default: 'controlled',
+  },
   imageUrl: String,
   time: { type: Date, default: Date.now },
 })

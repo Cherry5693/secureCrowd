@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 
-export default function PrivateChat({ room, myId, onClose, socket }) {
+export default function PrivateChat({ room, myId, onClose, socket, offsetIndex = 0 }) {
   const [message,  setMessage]  = useState('')
   const [messages, setMessages] = useState([])
   const [joined,   setJoined]   = useState(false)
@@ -25,14 +25,32 @@ export default function PrivateChat({ room, myId, onClose, socket }) {
       if (data.roomId === room.roomId) onClose()
     }
 
+    // FIX #2: Load persisted private message history on join
+    const onHistory = (history) => {
+      const forThisRoom = history.filter(m => m.privateRoomId === room.roomId)
+      if (forThisRoom.length > 0) {
+        setMessages(prev => [
+          ...forThisRoom.map(m => ({
+            roomId:  m.privateRoomId,
+            sender:  m.sender,
+            message: m.message,
+            time:    m.time,
+          })),
+          ...prev,
+        ])
+      }
+    }
+
     socket.on('receive_private_message', onPrivateMsg)
     socket.on('private_chat_joined',     onJoined)
     socket.on('private_chat_resolved',   onResolved)
+    socket.on('private_message_history', onHistory)
 
     return () => {
       socket.off('receive_private_message', onPrivateMsg)
       socket.off('private_chat_joined',     onJoined)
       socket.off('private_chat_resolved',   onResolved)
+      socket.off('private_message_history', onHistory)
     }
   }, [socket, room.roomId])
 
@@ -47,7 +65,7 @@ export default function PrivateChat({ room, myId, onClose, socket }) {
 
   return (
     <div style={{
-      position: 'fixed', bottom: 20, right: 20, width: 320,
+      position: 'fixed', bottom: 20, right: 20 + offsetIndex * 340, width: 320,
       background: 'var(--bg-card)', border: '1px solid var(--accent)',
       borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-accent)',
       display: 'flex', flexDirection: 'column', zIndex: 500,
@@ -65,7 +83,7 @@ export default function PrivateChat({ room, myId, onClose, socket }) {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {joined && (
+          {joined && myId === room.targetId && (
             <button
               onClick={resolve}
               style={{

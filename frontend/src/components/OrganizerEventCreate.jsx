@@ -9,11 +9,13 @@ export default function OrganizerEventCreate({ onCreated }) {
     name: '', location: '', sections: 'A,B,C,D',
     startTime: '', endTime: '',
   })
+
   const [created, setCreated] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
   const navigate  = useNavigate()
 
+  
   const organizer = JSON.parse(localStorage.getItem('organizerUser') || '{}')
   const joinUrl   = created ? `${window.location.origin}/join?token=${created.qrToken}` : ''
 
@@ -30,11 +32,14 @@ export default function OrganizerEventCreate({ onCreated }) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${organizer.token}` },
         body: JSON.stringify({
           ...form,
+          startTime: form.startTime ? `${form.startTime}:00+05:30` : undefined,
+          endTime: form.endTime ? `${form.endTime}:00+05:30` : undefined,
           sections: form.sections.split(',').map(s => s.trim().toUpperCase()).filter(Boolean),
         }),
       })
       const data = await res.json()
       if (!res.ok) return setError(data.error || 'Failed to create event')
+      
       setCreated(data)
       onCreated?.(data)
     } catch {

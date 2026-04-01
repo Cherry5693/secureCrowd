@@ -6,7 +6,8 @@ import OrganizerEventCreate from './OrganizerEventCreate'
 
 const API = import.meta.env.VITE_API_URL
 
-const formatTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const formatTime = (t) => new Date(t).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
+const formatFullDate = (t) => new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 // Colour per section letter (cycles for 26 letters)
 const SECTION_COLORS = [
@@ -28,17 +29,57 @@ export default function OrganizerDashboard() {
   const [loading,        setLoading]        = useState(true)
   const [sectionMembers, setSectionMembers] = useState({})  // { A: [], B: [], ... }
   const [activeSection,  setActiveSection]  = useState(null) // which section pill is expanded
+  const [broadcastMessage, setBroadcastMessage] = useState('')
+  const [isBroadcasting, setIsBroadcasting] = useState(false)
+  const [listTab, setListTab] = useState('active')
   const bottomRef = useRef(null)
+
+  const fetchEvents = async () => {
+    if (!organizer.token) {
+      navigate('/auth')
+      return
+    }
+    setLoading(true)
+    try {
+      const r = await fetch(`${API}/api/events`, {
+        headers: { Authorization: `Bearer ${organizer.token}` },
+      })
+      if (r.status === 401) {
+        localStorage.removeItem('organizerUser')
+        navigate('/auth')
+        return
+      }
+      const data = await r.json()
+      setEvents(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   // Fetch events on mount
   useEffect(() => {
-    fetch(`${API}/api/events`, {
-      headers: { Authorization: `Bearer ${organizer.token}` },
-    })
-      .then(r => r.json())
-      .then(data => { setEvents(Array.isArray(data) ? data : []); setLoading(false) })
-      .catch(() => setLoading(false))
+    fetchEvents()
   }, [])
+
+  const handleDeactivate = async (eventId, e) => {
+    e.stopPropagation() // Prevent triggering watchEvent click
+    if (!window.confirm('Are you sure you want to deactivate this event? All attendee connections will be permanently severed.')) return
+
+    try {
+      const r = await fetch(`${API}/api/events/${eventId}/close`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${organizer.token}` }
+      })
+      if (r.ok) {
+        if (selected?._id === eventId) setSelected(prev => ({ ...prev, isActive: false }))
+        fetchEvents()
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   // Socket for live monitoring
   useEffect(() => {
@@ -81,6 +122,18 @@ export default function OrganizerDashboard() {
 
   const joinUrl = (qrToken) => `${window.location.origin}/join?token=${qrToken}`
 
+  // Broadcast to all
+  const handleBroadcast = () => {
+    const text = broadcastMessage.trim()
+    if (!text || !socketRef.current || !selected) return
+    setIsBroadcasting(true)
+    socketRef.current.emit('organizer_broadcast', { eventId: selected._id, message: text })
+    setTimeout(() => {
+      setIsBroadcasting(false)
+      setBroadcastMessage('')
+    }, 500) // slight delay for UX
+  }
+
   // Toggle section panel
   const handleSectionClick = (s) => {
     setActiveSection(prev => prev === s ? null : s)
@@ -120,16 +173,26 @@ export default function OrganizerDashboard() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px 8px' }}>
-            <p style={{
-              fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
-              textTransform: 'uppercase', letterSpacing: 1, padding: '0 8px', marginBottom: 8,
-            }}>Your Events</p>
+            <div style={{ display: 'flex', gap: 8, padding: '0 8px', marginBottom: 16 }}>
+              <button 
+                onClick={() => { setListTab('active'); setSelected(null); setView('events') }} 
+                style={{ flex: 1, padding: '6px', fontSize: 12, fontWeight: 700, borderRadius: 20, border: 'none', background: listTab === 'active' ? 'var(--accent)' : 'var(--bg-raised)', color: listTab === 'active' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                Active
+              </button>
+              <button 
+                onClick={() => { setListTab('history'); setSelected(null); setView('events') }} 
+                style={{ flex: 1, padding: '6px', fontSize: 12, fontWeight: 700, borderRadius: 20, border: 'none', background: listTab === 'history' ? 'var(--accent)' : 'var(--bg-raised)', color: listTab === 'history' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                History
+              </button>
+            </div>
 
             {loading && <div style={{ textAlign: 'center', padding: 20 }}><span className="spinner" /></div>}
-            {!loading && events.length === 0 && (
-              <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '0 8px' }}>No events yet</p>
+            {!loading && events.filter(e => listTab === 'active' ? e.isActive : !e.isActive).length === 0 && (
+              <p style={{ color: 'var(--text-muted)', fontSize: 13, padding: '0 8px' }}>
+                {listTab === 'active' ? 'No active events' : 'No history yet'}
+              </p>
             )}
-            {events.map(ev => (
+            {events.filter(e => listTab === 'active' ? e.isActive : !e.isActive).map(ev => (
               <button key={ev._id} onClick={() => watchEvent(ev)} style={{
                 width: '100%', textAlign: 'left', padding: '10px 12px',
                 borderRadius: 'var(--radius-md)',
@@ -142,13 +205,33 @@ export default function OrganizerDashboard() {
                 <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
                   <span className="status-dot"
                     style={{ background: ev.isActive ? 'var(--safe)' : 'var(--text-muted)' }} />
-                  <span style={{ fontSize: 11, color: ev.isActive ? 'var(--safe)' : 'var(--text-muted)' }}>
-                    {ev.isActive ? 'Active' : 'Closed'}
-                  </span>
+                  {ev.isActive ? (
+                    <span style={{ fontSize: 11, color: 'var(--safe)' }}>Active</span>
+                  ) : (
+                    <span style={{
+                      background: 'var(--text-muted)', color: '#fff', 
+                      padding: '2px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 
+                    }}>INACTIVE</span>
+                  )}
                   <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>
                     {ev.sections?.join(', ')}
                   </span>
                 </div>
+                {ev.isActive && (
+                  <button 
+                    onClick={(e) => handleDeactivate(ev._id, e)}
+                    style={{
+                      marginTop: 10, width: '100%', padding: '6px 0',
+                      background: 'transparent', border: '1px solid var(--critical)',
+                      color: 'var(--critical)', borderRadius: 'var(--radius-sm)', fontSize: 11,
+                      cursor: 'pointer', transition: 'all 0.2s', fontWeight: 600
+                    }}
+                    onMouseOver={e => { e.target.style.background = 'var(--critical)'; e.target.style.color = '#fff' }}
+                    onMouseOut={e => { e.target.style.background = 'transparent'; e.target.style.color = 'var(--critical)' }}
+                  >
+                    ⏹ Deactivate Event
+                  </button>
+                )}
               </button>
             ))}
           </div>
@@ -182,8 +265,63 @@ export default function OrganizerDashboard() {
             </div>
           )}
 
+          {/* History Event View */}
+          {view === 'watch' && selected && !selected.isActive && (
+            <div className="fade-in">
+              <div style={{ padding: 28, background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+                <div style={{ display: 'inline-block', marginBottom: 12, padding: '4px 10px', background: 'var(--text-muted)', color: '#fff', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+                  HISTORY RECORD
+                </div>
+                <h2 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 20 }}>
+                  {selected.name}
+                </h2>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'flex', gap: 32 }}>
+                    <div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Location</p>
+                      <p style={{ fontSize: 15, color: 'var(--text-secondary)', fontWeight: 600 }}>📍 {selected.location}</p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Sections</p>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {selected.sections.map(s => (
+                          <span key={s} style={{ background: 'var(--bg-raised)', padding: '2px 8px', borderRadius: 4, border: '1px solid var(--border)', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 32, marginTop: 8 }}>
+                    <div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Started (IST)</p>
+                      <p style={{ fontSize: 15, color: 'var(--text-secondary)', fontWeight: 500 }}>{formatFullDate(selected.startTime)}</p>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Ended (IST)</p>
+                      <p style={{ fontSize: 15, color: 'var(--text-secondary)', fontWeight: 500 }}>{formatFullDate(selected.endTime)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 32, padding: 16, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: 'var(--radius-md)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 20 }}>⚠️</span>
+                  <div>
+                    <h4 style={{ color: 'var(--critical)', fontSize: 15, margin: '0 0 6px 0' }}>Event Data Purged</h4>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5, margin: 0 }}>
+                      This event has concluded. All associated messages, emergency alerts, and participant records have been permanently deleted from the database in accordance with privacy policies. 
+                      Further interaction or broadcasting is disabled.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Watch Event View */}
-          {view === 'watch' && selected && (
+          {view === 'watch' && selected && selected.isActive && (
             <div className="fade-in">
 
               {/* ── Event Header ─────────────────────────────────────────────── */}
@@ -258,10 +396,64 @@ export default function OrganizerDashboard() {
                 {/* QR Code */}
                 <div style={{
                   background: '#fff', borderRadius: 'var(--radius-md)', padding: 12,
-                  textAlign: 'center', flexShrink: 0,
+                  textAlign: 'center', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center'
                 }}>
                   <QRCode value={joinUrl(selected.qrToken)} size={100} />
-                  <p style={{ fontSize: 10, color: '#666', marginTop: 6 }}>Scan to join</p>
+                  <p style={{ fontSize: 10, color: '#666', marginTop: 6, marginBottom: 8 }}>Scan to join</p>
+                  
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 6, background: '#f4f4f5', 
+                    padding: '4px 8px', borderRadius: 4, border: '1px solid #e4e4e7',
+                    maxWidth: 140
+                  }}>
+                    <span style={{ 
+                      fontSize: 10, fontFamily: 'monospace', color: '#18181b', 
+                      fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    }} title={selected.qrToken}>
+                      {selected.qrToken}
+                    </span>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(selected.qrToken)}
+                      title="Copy full event code"
+                      style={{ 
+                        background: 'none', border: 'none', cursor: 'pointer', 
+                        fontSize: 12, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}
+                    >
+                      📋
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Broadcast Message Panel ────────────────────────────────── */}
+              <div style={{
+                background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)',
+                border: '1px solid var(--accent-dim)', padding: 20, marginBottom: 24,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
+              }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--accent)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  📢 Send Official Broadcast
+                </h3>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+                  This message will instantly appear as an authoritative alert in <strong>all active sections</strong>.
+                </p>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <input
+                    className="input"
+                    placeholder="Type an announcement or instructions..."
+                    value={broadcastMessage}
+                    onChange={(e) => setBroadcastMessage(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleBroadcast() }}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleBroadcast}
+                    disabled={isBroadcasting || !broadcastMessage.trim()}
+                  >
+                    {isBroadcasting ? 'Sending...' : 'Broadcast Now'}
+                  </button>
                 </div>
               </div>
 
@@ -447,27 +639,32 @@ export default function OrganizerDashboard() {
                       Waiting for messages…
                     </p>
                   ) : (
-                    liveFeed.map((msg, i) => (
-                      <div key={i} style={{
-                        padding: '8px 0', borderBottom: '1px solid var(--border)',
-                        display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 13,
-                      }}>
-                        <span style={{
-                          background: msg.isEmergency ? 'var(--critical-dim)' : sectionColor(msg.section) + '22',
-                          color: msg.isEmergency ? 'var(--critical)' : sectionColor(msg.section),
-                          border: `1px solid ${msg.isEmergency ? 'var(--critical)' : sectionColor(msg.section) + '66'}`,
-                          borderRadius: 20, padding: '2px 8px', fontSize: 11, whiteSpace: 'nowrap',
-                          fontWeight: 700,
+                    liveFeed.map((msg, i) => {
+                      const isAnnouncement = msg.isAnnouncement || msg.sender === 'ORGANIZER'
+                      return (
+                        <div key={i} style={{
+                          padding: '8px 0', borderBottom: '1px solid var(--border)',
+                          display: 'flex', gap: 12, alignItems: 'flex-start', fontSize: 13,
                         }}>
-                          §{msg.section}
-                        </span>
-                        <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{msg.sender}</span>
-                        <span style={{ color: 'var(--text-primary)', flex: 1 }}>{msg.message}</span>
-                        <span style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>
-                          {formatTime(msg.time)}
-                        </span>
-                      </div>
-                    ))
+                          <span style={{
+                            background: isAnnouncement ? 'var(--accent-dim)' : msg.isEmergency ? 'var(--critical-dim)' : sectionColor(msg.section) + '22',
+                            color: isAnnouncement ? 'var(--accent)' : msg.isEmergency ? 'var(--critical)' : sectionColor(msg.section),
+                            border: `1px solid ${isAnnouncement ? 'var(--accent)' : msg.isEmergency ? 'var(--critical)' : sectionColor(msg.section) + '66'}`,
+                            borderRadius: 20, padding: '2px 8px', fontSize: 11, whiteSpace: 'nowrap',
+                            fontWeight: 700,
+                          }}>
+                            {isAnnouncement ? '📢 ALL' : `§${msg.section}`}
+                          </span>
+                          <span style={{ color: isAnnouncement ? 'var(--accent)' : 'var(--text-muted)', whiteSpace: 'nowrap', fontWeight: isAnnouncement ? 700 : 400 }}>
+                            {msg.sender === 'ORGANIZER' ? 'You (Broadcast)' : msg.sender}
+                          </span>
+                          <span style={{ color: 'var(--text-primary)', flex: 1 }}>{msg.message}</span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                            {formatTime(msg.time)}
+                          </span>
+                        </div>
+                      )
+                    })
                   )}
                   <div ref={bottomRef} />
                 </div>

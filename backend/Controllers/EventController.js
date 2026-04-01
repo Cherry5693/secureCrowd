@@ -32,7 +32,7 @@ router.post('/create', verifyOrganizer, async (req, res) => {
 // GET /api/events  — organizer's events
 router.get('/', verifyOrganizer, async (req, res) => {
   try {
-    const events = await Event.find({ organizerId: req.user.id }).sort({ createdAt: -1 })
+    let events = await Event.find({ organizerId: req.user.id }).sort({ createdAt: -1 })
     res.json(events)
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -59,6 +59,36 @@ router.put('/:id/close', verifyOrganizer, async (req, res) => {
       { new: true }
     )
     if (!event) return res.status(404).json({ error: 'Event not found' })
+
+    await Message.deleteMany({ eventId: event._id });
+
+    const io = req.app.get('io')
+    if (io) {
+      const shutdownMessage = 'This event has been deactivated. All activities are now stopped.'
+      
+      // Notify and disconnect all attendees in this event
+      for (const section of event.sections) {
+        const roomName = `${event._id}_${section}`
+        io.to(roomName).emit('event_deactivated', { message: shutdownMessage })
+      }
+      
+      // Forcefully disconnect the sockets mapped to this event constraint
+      const sockets = await io.fetchSockets()
+      for (const socket of sockets) {
+        if (socket.eventId === event._id.toString()) {
+          socket.disconnect(true)
+        }
+      }
+      
+      // Optionally notify organizers watching the dashboard socket view
+      const state = require('../sockets/state')
+      for (const [sid, eid] of Object.entries(state.organizerWatching || {})) {
+        if (eid === event._id.toString()) {
+          io.to(sid).emit('event_deactivated_alert', { message: shutdownMessage, eventId: eid })
+        }
+      }
+    }
+
     res.json({ message: 'Event closed', event })
   } catch (err) {
     res.status(500).json({ error: err.message })
