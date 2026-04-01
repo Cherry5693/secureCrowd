@@ -1,8 +1,9 @@
 const { v4: uuidv4 } = require('uuid')
-const { detectUrgency }  = require('../services/urgencyDetector')
-const { uploadImage }    = require('../services/cloudinaryUpload')
-const Message            = require('../models/Message')
-const Event              = require('../models/Event')
+const { detectUrgency } = require('../services/urgencyDetector')
+const { uploadImage } = require('../services/cloudinaryUpload')
+const Message = require('../models/Message')
+const Event = require('../models/Event')
+ const axios = require('axios')
 
 const state = require('./state')
 
@@ -69,11 +70,40 @@ module.exports = function registerSocketHandlers(io, socket) {
       })
     }
 
-    const urgency = detectUrgency(message || '')
+    let urgency = detectUrgency(message || '')
+
+    // HYBRID AI: Only call Python if NORMAL
+    if (urgency.level === 'NORMAL' && message && message.length > 15) {
+      try {
+        const mlRes = await axios.post('http://localhost:8000/analyze', {
+          message,
+          section
+        })
+
+        const ml = mlRes.data
+
+        // Override ONLY if ML detects emergency
+        if (ml.emergency) {
+          urgency = {
+            level: ml.severity === 'high' ? 'CRITICAL' : 'HIGH',
+            confidence: ml.confidence,
+            keywords: [],
+            labels: [ml.category],
+            isEmergency: true
+          }
+        }
+
+      } catch (err) {
+        console.error('[ML API ERROR]', err.message)
+        // fallback: keep keyword result
+      }
+    }
+
     const roomName = `${eventId}_${section}`
 
     try {
       let finalImageUrl = null
+
       if (imageUrl) {
         try {
           finalImageUrl = await uploadImage(imageUrl)
@@ -89,7 +119,12 @@ module.exports = function registerSocketHandlers(io, socket) {
         sender: socket.anonymousId,
         anonymousId: socket.anonymousId,
         message: message || '',
-        messageType: finalImageUrl ? 'image' : urgency.isEmergency ? 'emergency' : 'normal',
+        messageType: finalImageUrl
+          ? 'image'
+          : urgency.isEmergency
+          ? 'emergency'
+          : 'normal',
+
         urgencyLevel: urgency.level,
         urgencyKeywords: urgency.keywords,
         isEmergency: urgency.isEmergency,
@@ -100,6 +135,7 @@ module.exports = function registerSocketHandlers(io, socket) {
 
       io.to(roomName).emit('receive_message', saved)
 
+      //  EMERGENCY FLOW 
       if (urgency.isEmergency) {
         const alert = {
           _id: saved._id,
@@ -117,6 +153,7 @@ module.exports = function registerSocketHandlers(io, socket) {
           if (eventDoc) {
             for (const sec of eventDoc.sections) {
               if (sec === section) continue
+
               io.to(`${eventId}_${sec}`).emit('emergency_alert', {
                 ...alert,
                 crossSection: true,
@@ -128,14 +165,17 @@ module.exports = function registerSocketHandlers(io, socket) {
           console.error('Cross-section broadcast error:', err)
         }
 
+        // Organizer alerts
         for (const [sid, eid] of Object.entries(state.organizerWatching)) {
           if (eid === eventId) io.to(sid).emit('organizer_alert', alert)
         }
       }
 
+      // Organizer normal messages
       for (const [sid, eid] of Object.entries(state.organizerWatching)) {
         if (eid === eventId) io.to(sid).emit('organizer_message', saved)
       }
+
     } catch (err) {
       socket.emit('error', { message: 'Failed to send message' })
     }

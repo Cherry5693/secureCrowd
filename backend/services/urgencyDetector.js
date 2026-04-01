@@ -1,7 +1,9 @@
 /**
  * SecureCrowd — AI Urgency Detection Module
- * Keyword-based classifier, no external API required.
+ * Optimized keyword classifier, same response shape as before.
  */
+
+const MAX_CACHE_SIZE = 1000;
 
 const CRITICAL_PATTERNS = [
   { kw: ['fire', 'flames', 'burning', 'blaze', 'smoke'], label: 'FIRE' },
@@ -32,58 +34,137 @@ const HIGH_PATTERNS = [
   { kw: ['panic', "can't breathe", 'anxiety', 'hyperventilat'], label: 'DISTRESS' },
 ]
 
-const detectUrgency = (message) => {
-  const text = message.toLowerCase().trim()
+const normalizeText = (value = '') =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 
-  // Check CRITICAL patterns
-  const criticalMatches = []
-  for (const { kw, label } of CRITICAL_PATTERNS) {
-    const found = kw.filter(k => text.includes(k))
-    if (found.length > 0) criticalMatches.push({ label, keywords: found })
+const buildBank = (patterns) =>
+  patterns.map(({ kw, label }) => ({
+    label,
+    kw: [...new Set(kw.map(normalizeText).filter(Boolean))].sort((a, b) => b.length - a.length),
+  }))
+
+const CRITICAL_BANK = buildBank(CRITICAL_PATTERNS)
+const HIGH_BANK = buildBank(HIGH_PATTERNS)
+
+const resultCache = new Map()
+
+const cacheResult = (key, value) => {
+  if (resultCache.has(key)) resultCache.delete(key)
+  resultCache.set(key, value)
+
+  if (resultCache.size > MAX_CACHE_SIZE) {
+    const oldestKey = resultCache.keys().next().value
+    resultCache.delete(oldestKey)
   }
+
+  return value
+}
+
+const getMatches = (text, bank) => {
+  const matches = []
+  const seenKeywords = new Set()
+
+  for (const { label, kw } of bank) {
+    const found = []
+
+    for (const phrase of kw) {
+      if (!seenKeywords.has(phrase) && text.includes(phrase)) {
+        found.push(phrase)
+        seenKeywords.add(phrase)
+      }
+    }
+
+    if (found.length > 0) {
+      matches.push({ label, keywords: found })
+    }
+  }
+
+  return matches
+}
+
+const buildResponse = ({ level, confidence, keywords, labels, isEmergency }) => ({
+  level,
+  confidence: Math.max(0, Math.min(0.99, confidence)),
+  keywords,
+  labels,
+  isEmergency,
+})
+
+const detectUrgency = (message = '') => {
+  const text = normalizeText(message)
+
+  if (!text) {
+    return buildResponse({
+      level: 'NORMAL',
+      confidence: 0.95,
+      keywords: [],
+      labels: [],
+      isEmergency: false,
+    })
+  }
+
+  const cached = resultCache.get(text)
+  if (cached) return cached
+
+  const criticalMatches = getMatches(text, CRITICAL_BANK)
 
   if (criticalMatches.length > 0) {
-    const allKw = criticalMatches.flatMap(m => m.keywords)
-    return {
-      level: 'CRITICAL',
-      confidence: Math.min(0.97, 0.80 + allKw.length * 0.05),
-      keywords: allKw,
-      labels: criticalMatches.map(m => m.label),
-      isEmergency: true,
-    }
+    const allKw = criticalMatches.flatMap((m) => m.keywords)
+    return cacheResult(
+      text,
+      buildResponse({
+        level: 'CRITICAL',
+        confidence: Math.min(0.97, 0.82 + allKw.length * 0.04),
+        keywords: allKw,
+        labels: criticalMatches.map((m) => m.label),
+        isEmergency: true,
+      })
+    )
   }
 
-  // Check HIGH patterns
-  const highMatches = []
-  for (const { kw, label } of HIGH_PATTERNS) {
-    const found = kw.filter(k => text.includes(k))
-    if (found.length > 0) highMatches.push({ label, keywords: found })
-  }
+  const highMatches = getMatches(text, HIGH_BANK)
+  const totalHighKw = highMatches.flatMap((m) => m.keywords).length
 
-  const totalHighKw = highMatches.flatMap(m => m.keywords).length
-
-  // Multiple HIGH signals → escalate to CRITICAL
   if (highMatches.length >= 3 || totalHighKw >= 4) {
-    return {
-      level: 'CRITICAL',
-      confidence: 0.75,
-      keywords: highMatches.flatMap(m => m.keywords),
-      labels: highMatches.map(m => m.label),
-      isEmergency: true,
-    }
+    return cacheResult(
+      text,
+      buildResponse({
+        level: 'CRITICAL',
+        confidence: 0.75,
+        keywords: highMatches.flatMap((m) => m.keywords),
+        labels: highMatches.map((m) => m.label),
+        isEmergency: true,
+      })
+    )
   }
 
   if (highMatches.length >= 1) {
-    return {
-      level: 'HIGH',
-      confidence: Math.min(0.90, 0.55 + totalHighKw * 0.10),
-      keywords: highMatches.flatMap(m => m.keywords),
-      labels: highMatches.map(m => m.label),
-      isEmergency: true,
-    }
+    return cacheResult(
+      text,
+      buildResponse({
+        level: 'HIGH',
+        confidence: Math.min(0.9, 0.58 + totalHighKw * 0.08),
+        keywords: highMatches.flatMap((m) => m.keywords),
+        labels: highMatches.map((m) => m.label),
+        isEmergency: true,
+      })
+    )
   }
 
-  return { level: 'NORMAL', confidence: 0.95, keywords: [], labels: [], isEmergency: false }
+  return cacheResult(
+    text,
+    buildResponse({
+      level: 'NORMAL',
+      confidence: 0.95,
+      keywords: [],
+      labels: [],
+      isEmergency: false,
+    })
+  )
 }
 
 module.exports = { detectUrgency }
