@@ -1,4 +1,6 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import LiveCameraModal from './LiveCameraModal'
+import ImagePreviewModal from './ImagePreviewModal'
 
 /**
  * MessageInput
@@ -12,12 +14,26 @@ export default function MessageInput({
   setImageFile,
   isEmergency,
   rateLimitWarning,
+  isUploading,
   onSend,
+  onDirectCameraSend,
   onOpenEmergencyModal,
   privateChatMode,
   setPrivateChatMode,
+  analyzeDraft,
+  isAnalyzingDraft,
 }) {
   const fileRef = useRef(null)
+  const [showLiveCamera, setShowLiveCamera] = useState(false)
+  const [previewFile, setPreviewFile] = useState(null)
+
+  // ── Real-time Draft Debounce ─────────────────────────────────────────────
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (analyzeDraft) analyzeDraft(message)
+    }, 1500)
+    return () => clearTimeout(timer)
+  }, [message, analyzeDraft])
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend() }
@@ -29,27 +45,45 @@ export default function MessageInput({
       <div className="chat-input-bar">
         {/* Emergency template button */}
         <button
+          disabled={isUploading}
           className={`btn btn-sm ${isEmergency ? 'btn-danger' : 'btn-ghost'}`}
           onClick={onOpenEmergencyModal}
           title="Quick emergency message templates"
+          style={{ opacity: isUploading ? 0.5 : 1 }}
         >
           🚨
         </button>
 
-        {/* Hidden file input */}
+        {/* Hidden file inputs */}
         <input
           ref={fileRef}
           type="file"
           accept="image/*"
           style={{ display: 'none' }}
-          onChange={(e) => setImageFile(e.target.files[0])}
+          onChange={(e) => {
+             if (e.target.files[0]) setPreviewFile(e.target.files[0])
+             e.target.value = null // reset so same file can be picked again
+          }}
         />
+
         <button
+          disabled={isUploading}
           className="btn btn-ghost btn-sm"
           onClick={() => fileRef.current?.click()}
-          title="Attach image"
+          title="Attach image from gallery"
+          style={{ padding: '0 6px', opacity: isUploading ? 0.5 : 1 }}
         >
-          📷
+          🖼️
+        </button>
+
+        <button
+          disabled={isUploading}
+          className="btn btn-ghost btn-sm"
+          onClick={() => setShowLiveCamera(true)}
+          title="Take live photo with camera"
+          style={{ padding: '0 6px', opacity: isUploading ? 0.5 : 1 }}
+        >
+          📸
         </button>
 
         {/* Image filename preview */}
@@ -64,23 +98,32 @@ export default function MessageInput({
 
         {/* Text input */}
         <input
+          disabled={isUploading}
           className="input"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            isEmergency
+            isUploading
+              ? 'Sending image...'
+              : isEmergency
               ? '🚨 Fill in the [brackets] with your details, then send…'
               : 'Type a message or tap the alert button for emergencies…'
           }
           style={{
             flex: 1,
+            opacity: isUploading ? 0.6 : 1,
             borderColor: isEmergency ? 'var(--critical)' : undefined,
             boxShadow:   isEmergency ? '0 0 0 3px var(--critical-dim)' : undefined,
           }}
         />
 
-        <button className="btn btn-primary btn-sm" onClick={onSend}>
+        <button 
+           className="btn btn-primary btn-sm" 
+           onClick={onSend}
+           disabled={isUploading || (!message.trim() && !imageFile)}
+           style={{ opacity: (isUploading || (!message.trim() && !imageFile)) ? 0.5 : 1 }}
+        >
           Send →
         </button>
       </div>
@@ -136,12 +179,39 @@ export default function MessageInput({
           </div>
         ) : (
           <>
-            <span>⚠️ Quick alerts</span>
+            {isAnalyzingDraft ? (
+              <span style={{ color: 'var(--accent)' }}>
+                🤖 AI Analyzing draft...
+              </span>
+            ) : (
+              <span>⚠️ Quick alerts</span>
+            )}
             <span style={{ color: 'var(--border-light)' }}>|</span>
             <span>📷 Attach media</span>
           </>
         )}
       </div>
+
+      {showLiveCamera && (
+        <LiveCameraModal 
+          onCapture={(file) => {
+            setShowLiveCamera(false)
+            setPreviewFile(file)
+          }}
+          onClose={() => setShowLiveCamera(false)}
+        />
+      )}
+
+      {previewFile && (
+        <ImagePreviewModal
+          file={previewFile}
+          onCancel={() => setPreviewFile(null)}
+          onSend={(highRes) => {
+            onDirectCameraSend(previewFile, highRes)
+            setPreviewFile(null)
+          }}
+        />
+      )}
     </>
   )
 }

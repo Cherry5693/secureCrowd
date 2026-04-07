@@ -117,6 +117,18 @@ export default function EmergencyPanel({ alerts, onClearAll, onRespond, onDismis
                   Reported by{' '}
                   <strong style={{ color: 'var(--text-secondary)' }}>{alert.sender}</strong>
                 </span>
+                {alert.location && (
+                  <a 
+                    href={`https://maps.google.com/?q=${alert.location.lat},${alert.location.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: 'var(--accent)', textDecoration: 'none', padding: '4px 8px' }}
+                    title="View exact location on Google Maps"
+                  >
+                    📍 Map
+                  </a>
+                )}
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={() => onRespond(alert.sender, alert.message, alert._id)}

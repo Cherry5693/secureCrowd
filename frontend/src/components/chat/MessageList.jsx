@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 const formatTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 const urgencyClass = (level) => {
@@ -11,7 +13,8 @@ const urgencyClass = (level) => {
  * Renders the scrollable message thread.
  * bottomRef is forwarded from the parent to trigger auto-scroll.
  */
-export default function MessageList({ messages, anonymousId, section, onRequestPrivate, bottomRef }) {
+export default function MessageList({ messages, anonymousId, section, onRequestPrivate, bottomRef, uploadProgress = {} }) {
+  const [selectedImage, setSelectedImage] = useState(null)
   if (messages.length === 0) {
     return (
       <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: 60, fontSize: 14 }}>
@@ -54,6 +57,8 @@ export default function MessageList({ messages, anonymousId, section, onRequestP
           <div key={msg._id || i} className={isMe ? 'msg msg-mine' : urgencyClass(msg.urgencyLevel)}>
             <div className="msg-sender">
               {isMe ? '🧑 You' : `👤 ${msg.sender || msg.anonymousId}`}
+              
+              {msg.isTemp && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>• Sending...</span>}
 
               {msg.urgencyLevel === 'CRITICAL' && (
                 <span className="msg-badge badge-critical" style={{ marginLeft: 8 }}>🚨 CRITICAL</span>
@@ -73,11 +78,57 @@ export default function MessageList({ messages, anonymousId, section, onRequestP
             </div>
 
             {msg.imageUrl ? (
-              <img
-                src={msg.imageUrl}
-                alt="shared"
-                style={{ maxWidth: 240, borderRadius: 'var(--radius-md)', marginTop: 6 }}
-              />
+              <div style={{ position: 'relative', display: 'inline-block', marginTop: 6 }}>
+                <img
+                  src={msg.imageUrl}
+                  alt="shared"
+                  onClick={() => {
+                    const upStat = uploadProgress[msg.tempId]
+                    // Only expand if it's completely finished or not uploading
+                    if (upStat === undefined || upStat === 100) setSelectedImage(msg.imageUrl)
+                  }}
+                  style={{ 
+                    maxWidth: 240, borderRadius: 'var(--radius-md)', display: 'block',
+                    cursor: (uploadProgress[msg.tempId] === undefined || uploadProgress[msg.tempId] === 100) ? 'pointer' : 'default',
+                    transition: 'filter 0.3s ease',
+                    filter: (uploadProgress[msg.tempId] !== undefined && uploadProgress[msg.tempId] < 100 && uploadProgress[msg.tempId] >= 0) 
+                              ? 'blur(6px) brightness(0.8)' 
+                              : 'none'
+                  }}
+                />
+                
+                {/* SVG Circular Progress Indicator */}
+                {uploadProgress[msg.tempId] !== undefined && uploadProgress[msg.tempId] >= 0 && (
+                  <div style={{
+                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                    width: 48, height: 48, background: 'rgba(0,0,0,0.5)', borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <svg width="40" height="40" viewBox="0 0 100 100" style={{ transform: 'rotate(-90deg)' }}>
+                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(255,255,255,0.2)" strokeWidth="8"/>
+                      <circle 
+                        cx="50" cy="50" r="40" fill="transparent" 
+                        stroke="#fff" 
+                        strokeWidth="8" strokeLinecap="round"
+                        strokeDasharray={251.2}
+                        strokeDashoffset={251.2 - (251.2 * Math.min(uploadProgress[msg.tempId], 100)) / 100}
+                        style={{ transition: 'stroke-dashoffset 0.3s ease-out, stroke 0.3s ease' }}
+                      />
+                    </svg>
+                  </div>
+                )}
+
+                {/* Error Indicator */}
+                {uploadProgress[msg.tempId] === -1 && (
+                  <div style={{
+                    position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                    background: 'rgba(255, 59, 48, 0.9)', color: '#fff', padding: '6px 12px',
+                    borderRadius: 20, fontSize: 12, fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center'
+                  }}>
+                    <span>⚠️ Failed</span>
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="msg-text">{msg.message}</div>
             )}
@@ -98,6 +149,30 @@ export default function MessageList({ messages, anonymousId, section, onRequestP
         )
       })}
       <div ref={bottomRef} />
+
+      {/* Lightbox Overlay */}
+      {selectedImage && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.92)', zIndex: 9999, display: 'flex',
+          flexDirection: 'column', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <button 
+            onClick={() => setSelectedImage(null)}
+            style={{ 
+               position: 'absolute', top: 20, right: 20, background: 'transparent', 
+               border: 'none', color: '#fff', fontSize: 32, cursor: 'pointer' 
+            }}
+          >
+            ✕
+          </button>
+          <img 
+            src={selectedImage} 
+            alt="Enlarged view" 
+            style={{ maxWidth: '95%', maxHeight: '90vh', objectFit: 'contain', borderRadius: 8 }} 
+          />
+        </div>
+      )}
     </>
   )
 }

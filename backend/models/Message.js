@@ -18,6 +18,7 @@ const messageSchema = new mongoose.Schema({
   },
   urgencyKeywords: [String],
   isEmergency: { type: Boolean, default: false },
+  translation: String,
   isPrivate: { type: Boolean, default: false },
   privateRoomId: String,
   privateChatMode: {
@@ -25,6 +26,12 @@ const messageSchema = new mongoose.Schema({
     enum: ['open', 'controlled'],
     default: 'controlled',
   },
+  location: {
+    lat: Number,
+    lng: Number,
+  },
+  resolved: { type: Boolean, default: false },
+  resolvedBy: String,
   imageUrl: String,
   time: { type: Date, default: Date.now },
 })

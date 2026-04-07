@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { QRCode } from 'react-qr-code'
 import OrganizerEventCreate from './OrganizerEventCreate'
+import SecurityTeamManager from './SecurityTeamManager'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -170,6 +171,11 @@ export default function OrganizerDashboard() {
               onClick={() => { setView('create'); setSelected(null) }}>
               + Create Event
             </button>
+            <button className="btn btn-ghost btn-full btn-sm"
+              style={{ marginTop: 8, color: view === 'security' ? 'var(--accent)' : 'var(--text-secondary)' }}
+              onClick={() => { setView('security'); setSelected(null) }}>
+              🛡️ Security Team
+            </button>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px 8px' }}>
@@ -251,6 +257,11 @@ export default function OrganizerDashboard() {
                 watchEvent(ev)
               }} />
             </div>
+          )}
+
+          {/* Security Team View */}
+          {view === 'security' && (
+            <SecurityTeamManager organizerToken={organizer.token} />
           )}
 
           {/* No event selected */}

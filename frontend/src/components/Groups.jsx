@@ -25,7 +25,9 @@ export default function Groups() {
     activeAlert, setActiveAlert,
     privateRooms, closePrivateRoom,
     crossSectionAlerts, rateLimitWarning, deactivatedMessage,
-    sendMessage, requestPrivate, handleLeave,
+    liveDraftEmergency, setLiveDraftEmergency, isAnalyzingDraft,
+    uploadProgress,
+    sendMessage, analyzeDraft, requestPrivate, handleLeave,
     dismissAlert, clearCrossSectionAlerts,
     socketRef,
   } = useGroupSocket({ token, event, section: initialSection, anonymousId })
@@ -36,14 +38,24 @@ export default function Groups() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // ── Send handler (bridges input state → socket action) ───────────────────────
   const handleSend = useCallback(() => {
     sendMessage(message, imageFile, privateChatMode)
     setMessage('')
     setImageFile(null)
     setIsEmergency(false)
+    setLiveDraftEmergency(false)
     setPrivateChatMode('controlled')
-  }, [message, imageFile, privateChatMode, sendMessage])
+  }, [message, imageFile, privateChatMode, sendMessage, setLiveDraftEmergency])
+
+  // ── Instant Send for Live Camera & Gallery ─────────────────────────────────
+  const handleDirectCameraSend = useCallback((file, highRes) => {
+    // Instantly fires the message with the newly captured blob, bypassing normal queue
+    sendMessage(message, file, privateChatMode, highRes)
+    setMessage('')
+    setImageFile(null)
+    setIsEmergency(false)
+    setLiveDraftEmergency(false)
+  }, [message, privateChatMode, sendMessage, setLiveDraftEmergency])
 
   // ── Emergency template selected ──────────────────────────────────────────────
   const handleTemplateSelect = (text) => {
@@ -116,6 +128,7 @@ export default function Groups() {
               section={initialSection}
               onRequestPrivate={requestPrivate}
               bottomRef={bottomRef}
+              uploadProgress={uploadProgress}
             />
           </div>
 
@@ -125,12 +138,16 @@ export default function Groups() {
             setMessage={setMessage}
             imageFile={imageFile}
             setImageFile={setImageFile}
-            isEmergency={isEmergency}
+            isEmergency={isEmergency || liveDraftEmergency}
             rateLimitWarning={rateLimitWarning}
+            isUploading={Object.values(uploadProgress).some(p => p >= 0 && p < 100)}
             onSend={handleSend}
+            onDirectCameraSend={handleDirectCameraSend}
             onOpenEmergencyModal={() => setShowEmergencyModal(true)}
             privateChatMode={privateChatMode}
             setPrivateChatMode={setPrivateChatMode}
+            analyzeDraft={analyzeDraft}
+            isAnalyzingDraft={isAnalyzingDraft}
           />
         </div>
 

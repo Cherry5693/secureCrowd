@@ -20,6 +20,15 @@ const verifyOrganizer = (req, res, next) => {
   })
 }
 
+const verifyStaff = (req, res, next) => {
+  verifyToken(req, res, () => {
+    if (req.user.role !== 'organizer' && req.user.role !== 'security') {
+      return res.status(403).json({ error: 'Staff access required' })
+    }
+    next()
+  })
+}
+
 // For Socket.IO middleware — call next(err) on failure
 const verifySocketToken = (socket, next) => {
   const token = socket.handshake.auth?.token
@@ -32,4 +41,4 @@ const verifySocketToken = (socket, next) => {
   }
 }
 
-module.exports = { verifyToken, verifyOrganizer, verifySocketToken }
+module.exports = { verifyToken, verifyOrganizer, verifyStaff, verifySocketToken }

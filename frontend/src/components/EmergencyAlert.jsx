@@ -50,7 +50,18 @@ export default function EmergencyAlert({ alert, onDismiss }) {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', flexDirection: 'column', alignItems: 'center' }}>
+          {alert.location && (
+            <a 
+              href={`https://maps.google.com/?q=${alert.location.lat},${alert.location.lng}`}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-primary btn-sm"
+              style={{ background: 'var(--accent)', borderColor: 'var(--accent)', textDecoration: 'none', marginBottom: 8 }}
+            >
+              📍 View Exact Location on Map
+            </a>
+          )}
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
             Reported by {alert.sender} • {new Date(alert.time).toLocaleTimeString()}
           </span>

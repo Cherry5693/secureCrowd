@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken')
 const { v4: uuidv4 } = require('uuid')
 const Event = require('../models/Event')
 const Message = require('../models/Message')
-const { verifyToken, verifyOrganizer } = require('../middleware/auth')
+const { verifyToken, verifyOrganizer, verifyStaff } = require('../middleware/auth')
 
 // POST /api/events/create  — organizer only
 router.post('/create', verifyOrganizer, async (req, res) => {
@@ -29,10 +29,17 @@ router.post('/create', verifyOrganizer, async (req, res) => {
   }
 })
 
-// GET /api/events  — organizer's events
-router.get('/', verifyOrganizer, async (req, res) => {
+// GET /api/events  — staff's events
+router.get('/', verifyStaff, async (req, res) => {
   try {
-    let events = await Event.find({ organizerId: req.user.id }).sort({ createdAt: -1 })
+    let events
+    if (req.user.role === 'security') {
+      // Security guards see all active events (or assigned ones, but for now all active)
+      events = await Event.find({ isActive: true }).sort({ createdAt: -1 })
+    } else {
+      // Organizers see only their own events
+      events = await Event.find({ organizerId: req.user.id }).sort({ createdAt: -1 })
+    }
     res.json(events)
   } catch (err) {
     res.status(500).json({ error: err.message })

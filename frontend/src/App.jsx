@@ -3,8 +3,9 @@ import Auth from './components/Auth'
 import EventJoin from './components/EventJoin'
 import Groups from './components/Groups'
 import OrganizerDashboard from './components/OrganizerDashboard'
+import SecurityDashboard from './components/SecurityDashboard'
 
-const getOrganizer = () => {
+const getStaff = () => {
   try { return JSON.parse(localStorage.getItem('organizerUser')) } catch { return null }
 }
 const getAttendee = () => {
@@ -12,30 +13,43 @@ const getAttendee = () => {
 }
 
 function ProtectedOrganizer({ children }) {
-  return getOrganizer() ? children : <Navigate to="/auth" replace />
+  const staff = getStaff()
+  return staff?.role === 'organizer' ? children : <Navigate to="/auth" replace />
+}
+function ProtectedSecurity({ children }) {
+  const staff = getStaff()
+  return staff?.role === 'security' ? children : <Navigate to="/auth" replace />
 }
 function ProtectedAttendee({ children }) {
   return getAttendee() ? children : <Navigate to="/join" replace />
 }
 
 export default function App() {
-  const organizer = getOrganizer()
-  const attendee  = getAttendee()
+  const staff = getStaff()
+  const attendee = getAttendee()
 
   return (
     <Routes>
       <Route path="/" element={
-        organizer ? <Navigate to="/organizer" replace /> :
+        staff?.role === 'security' ? <Navigate to="/security" replace /> :
+        staff?.role === 'organizer' ? <Navigate to="/organizer" replace /> :
         attendee  ? <Navigate to="/chat" replace /> :
                     <Navigate to="/join" replace />
       }/>
-      <Route path="/auth" element={organizer ? <Navigate to="/organizer" replace /> : <Auth />} />
+      <Route path="/auth" element={
+        staff?.role === 'security' ? <Navigate to="/security" replace /> :
+        staff?.role === 'organizer' ? <Navigate to="/organizer" replace /> : 
+        <Auth />
+      } />
       <Route path="/join" element={attendee  ? <Navigate to="/chat" replace />    : <EventJoin />} />
       <Route path="/chat" element={
         <ProtectedAttendee><Groups /></ProtectedAttendee>
       }/>
       <Route path="/organizer" element={
         <ProtectedOrganizer><OrganizerDashboard /></ProtectedOrganizer>
+      }/>
+      <Route path="/security" element={
+        <ProtectedSecurity><SecurityDashboard /></ProtectedSecurity>
       }/>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

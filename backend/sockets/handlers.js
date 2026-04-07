@@ -3,7 +3,7 @@ const { detectUrgency } = require('../services/urgencyDetector')
 const { uploadImage } = require('../services/cloudinaryUpload')
 const Message = require('../models/Message')
 const Event = require('../models/Event')
- const axios = require('axios')
+const { analyzeMessageWithGemini } = require('../services/geminiAnalyzer')
 
 const state = require('./state')
 
@@ -60,29 +60,15 @@ module.exports = function registerSocketHandlers(io, socket) {
     }
   })
 
-  // ── SEND MESSAGE ─────────────────────────────────────────────────────────
-  socket.on('send_message', async ({ eventId, section, message, imageUrl, privateChatMode = 'controlled' }) => {
-    if (!message?.trim() && !imageUrl) return
+  // ── ANALYZE DRAFT (Real-time typed check) ────────────────────────────────
+  socket.on('analyze_draft', async ({ eventId, section, message }) => {
+    if (!message?.trim()) return
 
-    if (state.isRateLimited(socket.id)) {
-      return socket.emit('rate_limited', {
-        message: 'You are sending messages too fast. Please wait a moment.',
-      })
-    }
-
-    let urgency = detectUrgency(message || '')
-
-    // HYBRID AI: Only call Python if NORMAL
-    if (urgency.level === 'NORMAL' && message && message.length > 15) {
+    let urgency = detectUrgency(message)
+    // Send it to Gemini if it's normal but >5 chars
+    if (urgency.level === 'NORMAL' && message.length > 5) {
       try {
-        const mlRes = await axios.post('http://localhost:8000/analyze', {
-          message,
-          section
-        })
-
-        const ml = mlRes.data
-
-        // Override ONLY if ML detects emergency
+        const ml = await analyzeMessageWithGemini(message, section)
         if (ml.emergency) {
           urgency = {
             level: ml.severity === 'high' ? 'CRITICAL' : 'HIGH',
@@ -92,9 +78,46 @@ module.exports = function registerSocketHandlers(io, socket) {
             isEmergency: true
           }
         }
+      } catch (err) {
+        // silent fallback for drafts to avoid console spam
+      }
+    }
+    
+    socket.emit('draft_analysis_result', { isEmergency: urgency.isEmergency })
+  })
+
+  // ── SEND MESSAGE ─────────────────────────────────────────────────────────
+  socket.on('send_message', async ({ eventId, section, message, imageUrl, privateChatMode = 'controlled', location, highRes, tempId }, callback) => {
+    if (!message?.trim() && !imageUrl) return
+
+    if (state.isRateLimited(socket.id)) {
+      if (typeof callback === 'function') callback({ success: false, error: 'Rate limited' })
+      return socket.emit('rate_limited', {
+        message: 'You are sending messages too fast. Please wait a moment.',
+      })
+    }
+
+    let urgency = detectUrgency(message || '')
+
+    // HYBRID AI: Only call Gemini if NORMAL
+    if (urgency.level === 'NORMAL' && message && message.length > 5) {
+      try {
+        const ml = await analyzeMessageWithGemini(message, section)
+
+        // Override ONLY if ML detects emergency
+        if (ml.emergency) {
+          urgency = {
+            level: ml.severity === 'high' ? 'CRITICAL' : 'HIGH',
+            confidence: ml.confidence,
+            keywords: [],
+            labels: [ml.category],
+            isEmergency: true,
+            translation: ml.english_translation
+          }
+        }
 
       } catch (err) {
-        console.error('[ML API ERROR]', err.message)
+        console.error('[Gemini ML API ERROR]', err.message)
         // fallback: keep keyword result
       }
     }
@@ -106,9 +129,11 @@ module.exports = function registerSocketHandlers(io, socket) {
 
       if (imageUrl) {
         try {
+          // You could pass the highRes boolean down here if Cloudinary handles it
           finalImageUrl = await uploadImage(imageUrl)
         } catch (uploadErr) {
           console.error('[Cloudinary] Upload failed:', uploadErr.message)
+          if (typeof callback === 'function') callback({ success: false, error: 'Upload failed' })
           return socket.emit('error', { message: 'Image upload failed. Please try again.' })
         }
       }
@@ -128,16 +153,22 @@ module.exports = function registerSocketHandlers(io, socket) {
         urgencyLevel: urgency.level,
         urgencyKeywords: urgency.keywords,
         isEmergency: urgency.isEmergency,
+        translation: urgency.translation || null,
         privateChatMode: urgency.isEmergency ? privateChatMode : 'controlled',
         imageUrl: finalImageUrl,
+        location: urgency.isEmergency ? location : null, // Only store coordinates on emergencies to preserve general privacy
         time: new Date(),
       })
 
-      io.to(roomName).emit('receive_message', saved)
+      const publicSaved = saved.toObject()
+      delete publicSaved.location
+      if (tempId) publicSaved.tempId = tempId // Echo back to link optimistic UI
+
+      io.to(roomName).emit('receive_message', publicSaved)
 
       //  EMERGENCY FLOW 
       if (urgency.isEmergency) {
-        const alert = {
+        const fullAlert = {
           _id: saved._id,
           section,
           eventId,
@@ -146,6 +177,8 @@ module.exports = function registerSocketHandlers(io, socket) {
           urgencyLevel: urgency.level,
           urgencyKeywords: urgency.keywords,
           time: saved.time,
+          location: saved.location,
+          translation: saved.translation,
         }
 
         try {
@@ -154,8 +187,10 @@ module.exports = function registerSocketHandlers(io, socket) {
             for (const sec of eventDoc.sections) {
               if (sec === section) continue
 
+              const publicAlert = { ...alert }
+              delete publicAlert.location
               io.to(`${eventId}_${sec}`).emit('emergency_alert', {
-                ...alert,
+                ...publicAlert,
                 crossSection: true,
                 originalSection: section,
               })
@@ -176,7 +211,12 @@ module.exports = function registerSocketHandlers(io, socket) {
         if (eid === eventId) io.to(sid).emit('organizer_message', saved)
       }
 
+      if (typeof callback === 'function') {
+        callback({ success: true, message: publicSaved })
+      }
+
     } catch (err) {
+      if (typeof callback === 'function') callback({ success: false, error: 'Internal failure' })
       socket.emit('error', { message: 'Failed to send message' })
     }
   })
@@ -203,6 +243,11 @@ module.exports = function registerSocketHandlers(io, socket) {
         const msg = await Message.findById(alertId).lean()
         if (msg) mode = msg.privateChatMode || 'controlled'
       } catch (err) { }
+    }
+
+    // Security Force Override — Security teams bypass controlled mode for instant comms
+    if (user && user.role === 'security') {
+      mode = 'open'
     }
 
     let targetSockets = []
@@ -265,6 +310,42 @@ module.exports = function registerSocketHandlers(io, socket) {
       }
 
       socket.emit('private_room_created', { roomId, topic, requesterId: socket.anonymousId, targetId: targetAnonymousId })
+    }
+  })
+
+  // ── RESOLVE GLOBAL EMERGENCY (SECURITY STAFF) ─────────────────────────
+  socket.on('resolve_emergency', async ({ alertId, resolverId }) => {
+    try {
+      const msg = await Message.findByIdAndUpdate(
+        alertId,
+        { resolved: true, resolvedBy: resolverId },
+        { new: true }
+      )
+      if (!msg) return
+
+      const resolvedPayload = {
+        alertId,
+        resolvedBy: resolverId,
+        eventId: msg.eventId,
+        originalSection: msg.section,
+        time: new Date(),
+      }
+
+      // Notify organizers/security
+      for (const [sid, eid] of Object.entries(state.organizerWatching)) {
+        if (eid === String(msg.eventId)) io.to(sid).emit('emergency_resolved', resolvedPayload)
+      }
+      
+      // Notify sections
+      if (state.sectionMembers[msg.eventId]) {
+        for (const sec of Object.keys(state.sectionMembers[msg.eventId])) {
+          io.to(`${msg.eventId}_${sec}`).emit('emergency_resolved', resolvedPayload)
+        }
+      }
+
+      console.log(`  → Global Emergency ${alertId} resolved by ${resolverId}`)
+    } catch (err) {
+      console.error('[Emergency] Form resolve failed:', err.message)
     }
   })
 
@@ -407,7 +488,7 @@ module.exports = function registerSocketHandlers(io, socket) {
 
   // ── ORGANIZER WATCH EVENT ────────────────────────────────────────────────
   socket.on('organizer_watch', async ({ eventId }) => {
-    if (user.role !== 'organizer') return
+    if (user.role !== 'organizer' && user.role !== 'security') return
     state.organizerWatching[socket.id] = eventId
 
     const event = await Event.findById(eventId)
@@ -421,8 +502,21 @@ module.exports = function registerSocketHandlers(io, socket) {
         })
       }
     }
+    
+    // Send historical emergencies
+    try {
+      const pastAlerts = await Message.find({ eventId, isEmergency: true })
+        .sort({ time: -1 })
+        .lean()
+      if (pastAlerts.length > 0) {
+        socket.emit('organizer_emergency_history', pastAlerts)
+      }
+    } catch (err) {
+      console.error('[History] Failed to send emergency history:', err.message)
+    }
+
     socket.emit('organizer_watching', { eventId })
-    console.log(`  → Organizer ${user.username} watching event ${eventId}`)
+    console.log(`  → ${user.role} ${user.username} watching event ${eventId}`)
   })
 
   socket.on('organizer_unwatch', () => {
