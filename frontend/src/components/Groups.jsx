@@ -10,7 +10,7 @@ import EmergencyModal     from './chat/EmergencyModal'
 
 export default function Groups() {
   const session = JSON.parse(sessionStorage.getItem('attendeeSession') || '{}')
-  const { anonymousId, token, event, section: initialSection } = session
+  const { anonymousId, token, event, section: initialSection, triangulation } = session
 
   // ── Input state (owned here, passed down to MessageInput) ────────────────────
   const [message,            setMessage]           = useState('')
@@ -26,11 +26,11 @@ export default function Groups() {
     privateRooms, closePrivateRoom,
     crossSectionAlerts, rateLimitWarning, deactivatedMessage,
     liveDraftEmergency, setLiveDraftEmergency, isAnalyzingDraft,
-    uploadProgress,
+    uploadProgress, typingUsers, emitTyping,
     sendMessage, analyzeDraft, requestPrivate, handleLeave,
     dismissAlert, clearCrossSectionAlerts,
     socketRef,
-  } = useGroupSocket({ token, event, section: initialSection, anonymousId })
+  } = useGroupSocket({ token, event, section: initialSection, anonymousId, triangulation })
 
   // ── Auto-scroll ──────────────────────────────────────────────────────────────
   const bottomRef = useRef(null)
@@ -38,8 +38,10 @@ export default function Groups() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSend = useCallback(() => {
-    sendMessage(message, imageFile, privateChatMode)
+  const handleSend = useCallback((audioBlob = null) => {
+    // If it's a DOM event it will be an object. We only want pure blobs.
+    const finalAudioBlob = (audioBlob instanceof Blob) ? audioBlob : null
+    sendMessage(message, imageFile, privateChatMode, false, finalAudioBlob)
     setMessage('')
     setImageFile(null)
     setIsEmergency(false)
@@ -129,6 +131,7 @@ export default function Groups() {
               onRequestPrivate={requestPrivate}
               bottomRef={bottomRef}
               uploadProgress={uploadProgress}
+              typingUsers={typingUsers}
             />
           </div>
 
@@ -148,6 +151,7 @@ export default function Groups() {
             setPrivateChatMode={setPrivateChatMode}
             analyzeDraft={analyzeDraft}
             isAnalyzingDraft={isAnalyzingDraft}
+            emitTyping={emitTyping}
           />
         </div>
 

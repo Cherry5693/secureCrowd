@@ -4,6 +4,7 @@ import { io } from 'socket.io-client'
 import { QRCode } from 'react-qr-code'
 import OrganizerEventCreate from './OrganizerEventCreate'
 import SecurityTeamManager from './SecurityTeamManager'
+import TacticalMap from './TacticalMap'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -32,6 +33,8 @@ export default function OrganizerDashboard() {
   const [activeSection,  setActiveSection]  = useState(null) // which section pill is expanded
   const [broadcastMessage, setBroadcastMessage] = useState('')
   const [isBroadcasting, setIsBroadcasting] = useState(false)
+  const [mapAlert,       setMapAlert]       = useState(null)
+  const [debriefModal,   setDebriefModal]   = useState(null)
   const [listTab, setListTab] = useState('active')
   const bottomRef = useRef(null)
 
@@ -199,7 +202,7 @@ export default function OrganizerDashboard() {
               </p>
             )}
             {events.filter(e => listTab === 'active' ? e.isActive : !e.isActive).map(ev => (
-              <button key={ev._id} onClick={() => watchEvent(ev)} style={{
+              <div key={ev._id} role="button" tabIndex={0} onClick={() => watchEvent(ev)} style={{
                 width: '100%', textAlign: 'left', padding: '10px 12px',
                 borderRadius: 'var(--radius-md)',
                 background: selected?._id === ev._id ? 'var(--accent-dim)' : 'transparent',
@@ -238,7 +241,22 @@ export default function OrganizerDashboard() {
                     ⏹ Deactivate Event
                   </button>
                 )}
-              </button>
+                {!ev.isActive && ev.aiDebrief && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setDebriefModal(ev) }}
+                    style={{
+                      marginTop: 10, width: '100%', padding: '6px 0',
+                      background: 'rgba(56, 189, 248, 0.1)', border: '1px solid var(--accent)',
+                      color: 'var(--accent)', borderRadius: 'var(--radius-sm)', fontSize: 11,
+                      cursor: 'pointer', transition: 'all 0.2s', fontWeight: 600
+                    }}
+                    onMouseOver={e => { e.target.style.background = 'var(--accent)'; e.target.style.color = '#fff' }}
+                    onMouseOut={e => { e.target.style.background = 'rgba(56, 189, 248, 0.1)'; e.target.style.color = 'var(--accent)' }}
+                  >
+                    🧠 View AI Debrief
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </aside>
@@ -613,22 +631,58 @@ export default function OrganizerDashboard() {
                     </p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {liveAlerts.map((a, i) => (
-                      <div key={i} className={a.urgencyLevel === 'CRITICAL' ? 'msg msg-critical' : 'msg msg-high'}>
-                        <div className="msg-sender">
-                          {a.urgencyLevel === 'CRITICAL' ? '🚨' : '⚠️'}
-                          <span className={`msg-badge ${a.urgencyLevel === 'CRITICAL' ? 'badge-critical' : 'badge-high'}`}
-                            style={{ marginLeft: 8 }}>
-                            {a.urgencyLevel}
-                          </span>
-                          <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontSize: 11 }}>
-                            Section {a.section} • {formatTime(a.time)}
-                          </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 16 }}>
+                    {liveAlerts.map(alert => (
+                      <div key={alert._id} style={{
+                        background: alert.resolved ? 'rgba(48,209,88,0.05)' : '#18181b',
+                        border: `1px solid ${alert.resolved ? 'var(--safe)' : alert.urgencyLevel === 'CRITICAL' ? 'var(--critical)' : 'var(--high)'}`,
+                        borderRadius: 8, padding: 16,
+                        boxShadow: alert.resolved ? 'none' : `0 0 16px ${alert.urgencyLevel === 'CRITICAL' ? 'rgba(255,45,85,0.1)' : 'rgba(255,149,0,0.1)'}`,
+                      }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ background: alert.resolved ? 'var(--safe)' : alert.urgencyLevel === 'CRITICAL' ? 'var(--critical)' : 'var(--high)', color: '#000', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 4 }}>
+                              {alert.resolved ? 'RESOLVED' : alert.urgencyLevel}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: '#f4f4f5' }}>Sector {alert.section}</span>
+                            {alert.triangulation && (
+                              <span style={{ fontSize: 11, background: '#27272a', padding: '2px 6px', borderRadius: 4, color: '#d4d4d8', fontWeight: 600 }}>
+                                📍 {alert.triangulation}
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatTime(alert.time)}</span>
                         </div>
-                        <div className="msg-text">{a.message}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                          Reporter: {a.sender} • Keywords: {a.urgencyKeywords?.join(', ') || '—'}
+
+                        {/* Message */}
+                        <div style={{ fontSize: 14, color: '#e4e4e7', lineHeight: 1.5, marginBottom: 16, background: '#111113', padding: 12, borderRadius: 4, borderLeft: `2px solid ${alert.resolved ? 'var(--safe)' : 'var(--critical)'}` }}>
+                          "{alert.message}"
+                        </div>
+
+                        {/* Keywords */}
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+                           {alert.urgencyKeywords?.map(kw => (
+                             <span key={kw} style={{ background: '#27272a', color: '#a1a1aa', fontSize: 10, padding: '2px 6px', borderRadius: 4 }}>{kw}</span>
+                           ))}
+                        </div>
+
+                        {/* Map & Actions */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {alert.location && (
+                            <button 
+                              onClick={() => setMapAlert(alert)}
+                              style={{ width: '100%', background: '#2563eb', border: 'none', color: '#fff', padding: '8px', fontSize: 12, fontWeight: 700, borderRadius: 4, cursor: 'pointer' }}
+                            >
+                              📍 VIEW ON TACTICAL MAP
+                            </button>
+                          )}
+
+                          {alert.resolved && (
+                            <div style={{ fontSize: 11, color: 'var(--safe)', textAlign: 'center', marginTop: 8 }}>
+                              Cleared by {alert.resolvedBy}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -685,6 +739,82 @@ export default function OrganizerDashboard() {
           )}
         </main>
       </div>
+      {/* Floating Tactical Map Modal */}
+      {mapAlert && (
+        <div 
+          onClick={() => setMapAlert(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '90%', maxWidth: 1000, height: '80%', background: '#000',
+              borderRadius: 16, overflow: 'hidden', position: 'relative',
+              border: '1px solid #3f3f46', boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+            }}
+          >
+            <button 
+              onClick={() => setMapAlert(null)}
+              style={{
+                position: 'absolute', top: 16, right: 16, zIndex: 10000,
+                background: 'var(--critical)', color: '#fff', border: 'none', cursor: 'pointer',
+                width: 36, height: 36, borderRadius: '50%', fontSize: 20,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+              }}
+            >
+              ✕
+            </button>
+            <TacticalMap alerts={[mapAlert]} />
+          </div>
+        </div>
+      )}
+
+      {/* AI Debrief Modal */}
+      {debriefModal && (
+        <div 
+          onClick={() => setDebriefModal(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '90%', maxWidth: 640, background: '#18181b', padding: 32,
+              borderRadius: 16, border: '1px solid #3f3f46', boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+            }}
+          >
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, fontSize: 22 }}>
+              <span style={{ fontSize: 24 }}>🧠</span> AI Security Debrief
+            </h2>
+            <div style={{ marginBottom: 24, fontSize: 12, color: 'var(--text-muted)' }}>
+              Automated Post-Mortem Report for {debriefModal.name} <br/>
+              Total Incidents Logged: <b>{debriefModal.incidentCount}</b>
+            </div>
+            
+            <div style={{ 
+              background: '#000', padding: '24px', borderRadius: 8, 
+              whiteSpace: 'pre-wrap', lineHeight: 1.6, color: '#f4f4f5', fontSize: 14,
+              borderLeft: '4px solid var(--accent)'
+            }}>
+              {debriefModal.aiDebrief}
+            </div>
+            
+            <div style={{ marginTop: 32, display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setDebriefModal(null)} className="btn btn-ghost" style={{ background: '#27272a' }}>
+                Close Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

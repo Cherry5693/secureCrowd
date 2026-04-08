@@ -3,7 +3,7 @@ const { detectUrgency } = require('../services/urgencyDetector')
 const { uploadImage } = require('../services/cloudinaryUpload')
 const Message = require('../models/Message')
 const Event = require('../models/Event')
-const { analyzeMessageWithGemini } = require('../services/geminiAnalyzer')
+const { analyzeMessageWithGemini, translateTextToEnglish } = require('../services/geminiAnalyzer')
 
 const state = require('./state')
 
@@ -54,10 +54,37 @@ module.exports = function registerSocketHandlers(io, socket) {
         .limit(50)
       socket.emit('message_history', history)
 
+      // Fetch active cross-section emergencies so they persist across refreshes
+      const activeCrossEmergencies = await Message.find({ 
+        eventId, 
+        section: { $ne: section }, 
+        isEmergency: true, 
+        resolved: false 
+      })
+
+      for (const alert of activeCrossEmergencies) {
+        const publicAlert = alert.toObject()
+        delete publicAlert.location // Preserve GPS privacy
+        socket.emit('emergency_alert', {
+          ...publicAlert,
+          crossSection: true,
+          originalSection: publicAlert.section,
+        })
+      }
+
       console.log(`  → ${socket.anonymousId} joined [${section}] of event ${eventId}`)
     } catch (err) {
       socket.emit('error', { message: 'Failed to join section' })
     }
+  })
+
+  // ── TYPING INDICATORS ────────────────────────────────────────────────────
+  socket.on('typing_start', ({ eventId, section }) => {
+    socket.to(`${eventId}_${section}`).emit('user_typing', { sender: socket.anonymousId })
+  })
+
+  socket.on('typing_stop', ({ eventId, section }) => {
+    socket.to(`${eventId}_${section}`).emit('user_stopped_typing', { sender: socket.anonymousId })
   })
 
   // ── ANALYZE DRAFT (Real-time typed check) ────────────────────────────────
@@ -87,8 +114,8 @@ module.exports = function registerSocketHandlers(io, socket) {
   })
 
   // ── SEND MESSAGE ─────────────────────────────────────────────────────────
-  socket.on('send_message', async ({ eventId, section, message, imageUrl, privateChatMode = 'controlled', location, highRes, tempId }, callback) => {
-    if (!message?.trim() && !imageUrl) return
+  socket.on('send_message', async ({ eventId, section, message, imageUrl, audioUrl, privateChatMode = 'controlled', location, highRes, tempId, triangulation }, callback) => {
+    if (!message?.trim() && !imageUrl && !audioUrl) return
 
     if (state.isRateLimited(socket.id)) {
       if (typeof callback === 'function') callback({ success: false, error: 'Rate limited' })
@@ -126,15 +153,25 @@ module.exports = function registerSocketHandlers(io, socket) {
 
     try {
       let finalImageUrl = null
+      let finalAudioUrl = null
 
       if (imageUrl) {
         try {
-          // You could pass the highRes boolean down here if Cloudinary handles it
           finalImageUrl = await uploadImage(imageUrl)
         } catch (uploadErr) {
           console.error('[Cloudinary] Upload failed:', uploadErr.message)
           if (typeof callback === 'function') callback({ success: false, error: 'Upload failed' })
           return socket.emit('error', { message: 'Image upload failed. Please try again.' })
+        }
+      }
+
+      if (audioUrl) {
+        try {
+          finalAudioUrl = await uploadImage(audioUrl)
+        } catch (uploadErr) {
+          console.error('[Cloudinary] Audio Upload failed:', uploadErr.message)
+          if (typeof callback === 'function') callback({ success: false, error: 'Upload failed' })
+          return socket.emit('error', { message: 'Audio upload failed. Please try again.' })
         }
       }
 
@@ -146,6 +183,8 @@ module.exports = function registerSocketHandlers(io, socket) {
         message: message || '',
         messageType: finalImageUrl
           ? 'image'
+          : finalAudioUrl
+          ? 'audio'
           : urgency.isEmergency
           ? 'emergency'
           : 'normal',
@@ -156,19 +195,22 @@ module.exports = function registerSocketHandlers(io, socket) {
         translation: urgency.translation || null,
         privateChatMode: urgency.isEmergency ? privateChatMode : 'controlled',
         imageUrl: finalImageUrl,
-        location: urgency.isEmergency ? location : null, // Only store coordinates on emergencies to preserve general privacy
+        audioUrl: finalAudioUrl,
+        location: urgency.isEmergency ? location : null, // Only store coordinates on emergencies
+        triangulation: urgency.isEmergency ? triangulation : null, // Privacy preserved same as GPS
         time: new Date(),
       })
 
       const publicSaved = saved.toObject()
       delete publicSaved.location
+      // Optionally could strip triangulation from public saved messages if needed, but it helps context in general
       if (tempId) publicSaved.tempId = tempId // Echo back to link optimistic UI
 
       io.to(roomName).emit('receive_message', publicSaved)
 
       //  EMERGENCY FLOW 
       if (urgency.isEmergency) {
-        const fullAlert = {
+        const alert = {
           _id: saved._id,
           section,
           eventId,
@@ -178,6 +220,7 @@ module.exports = function registerSocketHandlers(io, socket) {
           urgencyKeywords: urgency.keywords,
           time: saved.time,
           location: saved.location,
+          triangulation: saved.triangulation,
           translation: saved.translation,
         }
 
@@ -218,6 +261,26 @@ module.exports = function registerSocketHandlers(io, socket) {
     } catch (err) {
       if (typeof callback === 'function') callback({ success: false, error: 'Internal failure' })
       socket.emit('error', { message: 'Failed to send message' })
+    }
+  })
+
+  // ── TRANSLATE MESSAGE ────────────────────────────────────────────────────
+  socket.on('translate_message', async ({ eventId, section, messageId, text }) => {
+    try {
+      const translated = await translateTextToEnglish(text)
+      
+      if (translated && translated !== text) {
+        // Save to DB so fresh connections see it automatically via history
+        await Message.findByIdAndUpdate(messageId, { translation: translated })
+        
+        // Broadcast to everyone in the room to update defensively in real-time
+        io.to(`${eventId}_${section}`).emit('message_translated', {
+          messageId,
+          translation: translated
+        })
+      }
+    } catch (err) {
+      console.error('[Translation Hook Error]', err.message)
     }
   })
 

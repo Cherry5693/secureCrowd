@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const API = import.meta.env.VITE_API_URL
@@ -10,6 +10,8 @@ export default function EventJoin() {
   const [loading, setLoading]   = useState(false)
   const [event, setEvent]       = useState(null)
   const [section, setSection]   = useState('')
+  const [stand, setStand]       = useState('')
+  const [block, setBlock]       = useState('')
   const scannerRef = useRef(null)
   const navigate   = useNavigate()
 
@@ -32,6 +34,15 @@ export default function EventJoin() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const urlToken = params.get('token')
+    if (urlToken) {
+      setToken(urlToken)
+      joinEvent(urlToken)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const startScanning = async () => {
     setScanning(true)
@@ -67,9 +78,19 @@ export default function EventJoin() {
 
   const handleEnterChat = () => {
     if (!event || !section) return
+
+    let triangulation = null
+    if (stand.trim() || block.trim()) {
+      const parts = []
+      if (stand.trim()) parts.push(`Stand: ${stand.trim()}`)
+      if (block.trim()) parts.push(`Block/Row: ${block.trim()}`)
+      triangulation = parts.join(' | ')
+    }
+
     sessionStorage.setItem('attendeeSession', JSON.stringify({
       ...event,
       section,
+      triangulation,
       token: event.token,
     }))
     navigate('/chat')
@@ -95,7 +116,7 @@ export default function EventJoin() {
             </div>
 
             <label className="input-label">Select Your Section</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 10, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 10, marginBottom: 16 }}>
               {event.event.sections.map(s => (
                 <button key={s} onClick={() => setSection(s)} className="btn btn-ghost"
                   style={{ justifyContent: 'center', borderColor: section === s ? 'var(--accent)' : undefined,
@@ -105,6 +126,24 @@ export default function EventJoin() {
                 </button>
               ))}
             </div>
+
+            {section && (
+              <div style={{ animation: 'fade-in 0.2s ease-out' }}>
+                <div style={{ padding: 12, background: 'rgba(52, 211, 153, 0.05)', border: '1px solid rgba(52, 211, 153, 0.3)', borderRadius: 8, marginBottom: 20 }}>
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--safe)', fontWeight: 600 }}>📍 Triangulation Data (Optional)</p>
+                  <p style={{ margin: '4px 0 0 0', fontSize: 11, color: 'var(--text-muted)' }}>Help the security team isolate your position in case of an emergency.</p>
+                  
+                  <div style={{ marginTop: 12 }}>
+                    <label className="input-label" style={{ fontSize: 10 }}>Stand / Tier</label>
+                    <input className="input" placeholder="e.g. North Stand, Lower Tier" value={stand} onChange={e => setStand(e.target.value)} style={{ padding: 8, fontSize: 12 }} />
+                  </div>
+                  <div style={{ marginTop: 10 }}>
+                    <label className="input-label" style={{ fontSize: 10 }}>Block / Seat</label>
+                    <input className="input" placeholder="e.g. Block C, Row 42" value={block} onChange={e => setBlock(e.target.value)} style={{ padding: 8, fontSize: 12 }} />
+                  </div>
+                </div>
+              </div>
+            )}
 
             <button className="btn btn-primary btn-full" onClick={handleEnterChat}>
               Enter Section {section} →

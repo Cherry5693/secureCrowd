@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import PrivateChat from './PrivateChat'
+import TacticalMap from './TacticalMap'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -17,6 +18,7 @@ export default function SecurityDashboard() {
   const [liveAlerts,     setLiveAlerts]     = useState([])
   const [loading,        setLoading]        = useState(true)
   const [privateRooms,   setPrivateRooms]   = useState([])
+  const [mapAlert,       setMapAlert]       = useState(null)
   const [myId]                              = useState(`SECURITY_${Math.floor(100 + Math.random() * 900)}`)
 
   const fetchEvents = async () => {
@@ -163,8 +165,8 @@ export default function SecurityDashboard() {
               <p style={{ fontSize: 13 }}>Select an event from the sidebar to begin overwatch.</p>
             </div>
           ) : (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '1px solid #27272a', paddingBottom: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '1px solid #27272a', paddingBottom: 16, flexShrink: 0 }}>
                 <div>
                   <h2 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: '#f4f4f5' }}>{selected.name}</h2>
                   <p style={{ fontSize: 13, color: '#a1a1aa', marginTop: 4 }}>Scanning {selected.sections?.length || 0} active sections for highly urgent anomalies.</p>
@@ -187,11 +189,16 @@ export default function SecurityDashboard() {
                     }}>
                       {/* Header */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                           <span style={{ background: alert.resolved ? 'var(--safe)' : alert.urgencyLevel === 'CRITICAL' ? 'var(--critical)' : 'var(--high)', color: '#000', fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 4 }}>
                             {alert.resolved ? 'RESOLVED' : alert.urgencyLevel}
                           </span>
                           <span style={{ fontSize: 13, fontWeight: 700, color: '#f4f4f5' }}>Sector {alert.section}</span>
+                          {alert.triangulation && (
+                            <span style={{ fontSize: 11, background: '#27272a', padding: '2px 6px', borderRadius: 4, color: '#d4d4d8', fontWeight: 600 }}>
+                              📍 {alert.triangulation}
+                            </span>
+                          )}
                         </div>
                         <span style={{ fontSize: 11, color: '#71717a' }}>{formatTime(alert.time)}</span>
                       </div>
@@ -211,15 +218,14 @@ export default function SecurityDashboard() {
                       {/* Map & Actions */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {alert.location && (
-                          <a 
-                            href={`https://maps.google.com/?q=${alert.location.lat},${alert.location.lng}`}
-                            target="_blank" rel="noreferrer"
-                            style={{ display: 'block', textAlign: 'center', background: '#2563eb', color: '#fff', textDecoration: 'none', padding: '8px', fontSize: 12, fontWeight: 700, borderRadius: 4 }}
+                          <button 
+                            onClick={() => setMapAlert(alert)}
+                            style={{ width: '100%', background: '#2563eb', border: 'none', color: '#fff', padding: '8px', fontSize: 12, fontWeight: 700, borderRadius: 4, cursor: 'pointer' }}
                           >
-                            📍 VIEW GPS COORDINATES
-                          </a>
+                            📍 VIEW ON TACTICAL MAP
+                          </button>
                         )}
-                        
+
                         {!alert.resolved && (
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button 
@@ -243,7 +249,6 @@ export default function SecurityDashboard() {
                           </div>
                         )}
                       </div>
-
                     </div>
                   ))}
                 </div>
@@ -264,6 +269,41 @@ export default function SecurityDashboard() {
           offsetIndex={index}
         />
       ))}
+
+      {/* Floating Tactical Map Modal */}
+      {mapAlert && (
+        <div 
+          onClick={() => setMapAlert(null)}
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: '90%', maxWidth: 1000, height: '80%', background: '#000',
+              borderRadius: 16, overflow: 'hidden', position: 'relative',
+              border: '1px solid #3f3f46', boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+            }}
+          >
+            <button 
+              onClick={() => setMapAlert(null)}
+              style={{
+                position: 'absolute', top: 16, right: 16, zIndex: 10000,
+                background: 'var(--critical)', color: '#fff', border: 'none', cursor: 'pointer',
+                width: 36, height: 36, borderRadius: '50%', fontSize: 20,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+              }}
+            >
+              ✕
+            </button>
+            <TacticalMap alerts={[mapAlert]} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

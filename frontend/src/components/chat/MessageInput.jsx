@@ -22,12 +22,61 @@ export default function MessageInput({
   setPrivateChatMode,
   analyzeDraft,
   isAnalyzingDraft,
+  emitTyping,
 }) {
   const fileRef = useRef(null)
   const [showLiveCamera, setShowLiveCamera] = useState(false)
   const [previewFile, setPreviewFile] = useState(null)
 
-  // ── Real-time Draft Debounce ─────────────────────────────────────────────
+  // ── Audio Recording State ──────────────────────────────────────────────────
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const [isRecording, setIsRecording] = useState(false)
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Use webm for high cross-browser compatibility and small sizes
+      const recorder = new MediaRecorder(stream) // Fallback mimetype natively assigned
+      mediaRecorderRef.current = recorder
+      audioChunksRef.current = []
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+
+      recorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        onSend(audioBlob)
+        stream.getTracks().forEach(track => track.stop())
+      }
+
+      recorder.start()
+      setIsRecording(true)
+    } catch (err) {
+      alert('Microphone access denied or unavailable.')
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+      setIsRecording(false)
+    }
+  }
+
+  // ── Typing & Draft Debounce ──────────────────────────────────────────────
+  const typingTimeoutRef = useRef(null)
+
+  const handleTextChange = (e) => {
+    setMessage(e.target.value)
+    if (emitTyping) {
+      emitTyping(true)
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = setTimeout(() => emitTyping(false), 2000)
+    }
+  }
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (analyzeDraft) analyzeDraft(message)
@@ -79,6 +128,20 @@ export default function MessageInput({
         <button
           disabled={isUploading}
           className="btn btn-ghost btn-sm"
+          onMouseDown={startRecording}
+          onMouseUp={stopRecording}
+          onMouseLeave={stopRecording}
+          onTouchStart={startRecording}
+          onTouchEnd={stopRecording}
+          title="Hold to Walkie-Talkie (Audio)"
+          style={{ padding: '0 6px', opacity: isUploading ? 0.5 : 1, color: isRecording ? 'var(--critical)' : undefined, animation: isRecording ? 'pulse 1s infinite' : 'none' }}
+        >
+          {isRecording ? '🔴' : '🎙️'}
+        </button>
+
+        <button
+          disabled={isUploading}
+          className="btn btn-ghost btn-sm"
           onClick={() => setShowLiveCamera(true)}
           title="Take live photo with camera"
           style={{ padding: '0 6px', opacity: isUploading ? 0.5 : 1 }}
@@ -101,13 +164,15 @@ export default function MessageInput({
           disabled={isUploading}
           className="input"
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={handleTextChange}
           onKeyDown={handleKeyDown}
           placeholder={
             isUploading
               ? 'Sending image...'
               : isEmergency
               ? '🚨 Fill in the [brackets] with your details, then send…'
+              : isRecording 
+              ? '🎙️ Recording Audio... Release to send.'
               : 'Type a message or tap the alert button for emergencies…'
           }
           style={{

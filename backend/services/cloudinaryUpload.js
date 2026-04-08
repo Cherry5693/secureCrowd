@@ -19,7 +19,7 @@ const uploadImage = (base64DataUrl, opts = {}) => {
   return new Promise((resolve, reject) => {
     const options = {
       folder:         'securecrowd',
-      resource_type:  'image',
+      resource_type:  'auto',
       transformation: [{ quality: 'auto', fetch_format: 'auto' }],
       ...opts,
     }

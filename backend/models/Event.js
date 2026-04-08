@@ -11,6 +11,8 @@ const eventSchema = new mongoose.Schema({
   endTime: { type: Date, required: true },
   isActive: { type: Boolean, default: true },
   maxAttendees: { type: Number, default: 10000 },
+  aiDebrief: { type: String },
+  incidentCount: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
 })
 

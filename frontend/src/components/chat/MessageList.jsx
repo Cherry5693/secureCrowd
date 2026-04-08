@@ -13,7 +13,7 @@ const urgencyClass = (level) => {
  * Renders the scrollable message thread.
  * bottomRef is forwarded from the parent to trigger auto-scroll.
  */
-export default function MessageList({ messages, anonymousId, section, onRequestPrivate, bottomRef, uploadProgress = {} }) {
+export default function MessageList({ messages, anonymousId, section, onRequestPrivate, bottomRef, uploadProgress = {}, typingUsers = [] }) {
   const [selectedImage, setSelectedImage] = useState(null)
   if (messages.length === 0) {
     return (
@@ -54,9 +54,10 @@ export default function MessageList({ messages, anonymousId, section, onRequestP
 
         // ── Standard User Message ──
         return (
-          <div key={msg._id || i} className={isMe ? 'msg msg-mine' : urgencyClass(msg.urgencyLevel)}>
+          <div key={msg._id || i} className="msg-wrapper">
+          <div className={isMe ? 'msg msg-mine' : `msg msg-other ${urgencyClass(msg.urgencyLevel)}`}>
             <div className="msg-sender">
-              {isMe ? '🧑 You' : `👤 ${msg.sender || msg.anonymousId}`}
+              {isMe ? 'You' : `${msg.sender || msg.anonymousId}`}
               
               {msg.isTemp && <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>• Sending...</span>}
 
@@ -129,6 +130,10 @@ export default function MessageList({ messages, anonymousId, section, onRequestP
                   </div>
                 )}
               </div>
+            ) : msg.audioUrl ? (
+              <div style={{ marginTop: 8 }}>
+                <audio controls src={msg.audioUrl} style={{ height: 36, maxWidth: 240, borderRadius: 24, outline: 'none' }} />
+              </div>
             ) : (
               <div className="msg-text">{msg.message}</div>
             )}
@@ -146,8 +151,28 @@ export default function MessageList({ messages, anonymousId, section, onRequestP
               )}
             </div>
           </div>
+          </div>
         )
       })}
+
+      {/* Typing Indicators */}
+      {typingUsers && typingUsers.length > 0 && (
+        <div style={{ marginTop: 8, marginBottom: 16 }}>
+          {typingUsers.map(user => (
+            <div key={user} className="msg-wrapper">
+              <div className="msg msg-normal msg-other">
+                <div className="msg-sender" style={{ marginBottom: 4 }}>👤 {user} is typing</div>
+                <div className="typing-indicator">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div ref={bottomRef} />
 
       {/* Lightbox Overlay */}

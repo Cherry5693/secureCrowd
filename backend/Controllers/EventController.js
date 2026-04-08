@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid')
 const Event = require('../models/Event')
 const Message = require('../models/Message')
 const { verifyToken, verifyOrganizer, verifyStaff } = require('../middleware/auth')
+const { generateEventDebrief } = require('../services/geminiAnalyzer')
 
 // POST /api/events/create  — organizer only
 router.post('/create', verifyOrganizer, async (req, res) => {
@@ -66,6 +67,19 @@ router.put('/:id/close', verifyOrganizer, async (req, res) => {
       { new: true }
     )
     if (!event) return res.status(404).json({ error: 'Event not found' })
+
+    // Build the AI Debrief before destroying the evidence
+    const incidents = await Message.find({ eventId: event._id, isEmergency: true }).lean();
+    if (incidents.length > 0) {
+      const summary = await generateEventDebrief(incidents);
+      event.aiDebrief = summary;
+      event.incidentCount = incidents.length;
+      await event.save();
+    } else {
+      event.aiDebrief = "No emergencies reported. Event concluded safely and securely.";
+      event.incidentCount = 0;
+      await event.save();
+    }
 
     await Message.deleteMany({ eventId: event._id });
 

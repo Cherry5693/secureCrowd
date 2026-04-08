@@ -86,4 +86,58 @@ Message to analyze: "${message}"`;
   }
 }
 
-module.exports = { analyzeMessageWithGemini };
+async function translateTextToEnglish(text) {
+  if (!genAI || !text) return text;
+  const textModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const prompt = `Translate the following text into English. 
+If it is already in English, return exactly the same text. 
+Return ONLY the final translated string, with no quotation marks or commentary.
+
+Text: "${text}"`;
+
+  try {
+    const result = await textModel.generateContent(prompt);
+    return (await result.response).text().trim();
+  } catch (error) {
+    console.error("[Gemini AI Translation Error]", error.message);
+    return text; // fallback to original
+  }
+}
+
+async function generateEventDebrief(messages) {
+  if (!genAI) {
+    return 'AI Debrief unavailable (missing GEMINI_API_KEY).';
+  }
+  
+  // Use a text-only generative model without the application/json constraint
+  const textModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  
+  // Sanitize down the messages to just what's needed to preserve tokens
+  const simplifiedLogs = messages.map(m => ({
+    time: m.time,
+    urgencyLevel: m.urgencyLevel,
+    section: m.section,
+    triangulation: m.triangulation || 'unknown',
+    message: m.message,
+    translation: m.translation,
+    resolved: m.resolved,
+  }));
+
+  const prompt = `You are a Chief Security Officer for a massive event. 
+I am providing you with the logs of all emergencies that occurred today.
+Write a highly professional, 1 to 2 paragraph "Event Post-Mortem Debrief" summarizing the incidents, the primary zones affected (using the Section and Triangulation data), and the overall threat level of the event.
+Write it in a human, executive summary style. Use simple Markdown formatting.
+
+Emergency Logs:
+${JSON.stringify(simplifiedLogs, null, 2)}`;
+
+  try {
+    const result = await textModel.generateContent(prompt);
+    return (await result.response).text();
+  } catch (error) {
+    console.error("[Gemini AI Error]", error.message);
+    return 'Failed to generate AI debrief due to server error.';
+  }
+}
+
+module.exports = { analyzeMessageWithGemini, generateEventDebrief, translateTextToEnglish };

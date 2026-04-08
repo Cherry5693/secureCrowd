@@ -9,7 +9,7 @@ const API = import.meta.env.VITE_API_URL
  * Owns the entire Socket.IO lifecycle for an attendee session.
  * Returns state slices and action callbacks for Groups.jsx to consume.
  */
-export function useGroupSocket({ token, event, section, anonymousId }) {
+export function useGroupSocket({ token, event, section, anonymousId, triangulation }) {
   const navigate    = useNavigate()
   const socketRef   = useRef(null)
 
@@ -36,6 +36,7 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
   const [crossSectionAlerts, setCrossSectionAlerts] = useState([])
   const [rateLimitWarning,   setRateLimitWarning]   = useState(false)
   const [deactivatedMessage, setDeactivatedMessage] = useState(null)
+  const [typingUsers,        setTypingUsers]        = useState([])
   const [liveDraftEmergency, setLiveDraftEmergency] = useState(false)
   const [isAnalyzingDraft,   setIsAnalyzingDraft]   = useState(false)
   const [userLocation,       setUserLocation]       = useState(null)
@@ -60,7 +61,11 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
 
   // ── Socket lifecycle ─────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!token || !event?.id) { navigate('/join'); return }
+    if (!token || !event?.id) { 
+      sessionStorage.removeItem('attendeeSession')
+      navigate('/join')
+      return 
+    }
 
     const socket = io(API, { auth: { token } })
     socketRef.current = socket
@@ -79,8 +84,32 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
       setIsAnalyzingDraft(false)
     })
 
+    // Typing Dynamics
+    socket.on('user_typing', ({ sender }) => {
+      setTypingUsers(prev => prev.includes(sender) ? prev : [...prev, sender])
+    })
+    socket.on('user_stopped_typing', ({ sender }) => {
+      setTypingUsers(prev => prev.filter(u => u !== sender))
+    })
+
+    // Translations
+    socket.on('message_translated', ({ messageId, translation }) => {
+      setMessages(prev => prev.map(m => m._id === messageId ? { ...m, translation } : m))
+      setEmergencies(prev => prev.map(m => m._id === messageId ? { ...m, translation } : m))
+    })
+
     // Messages
-    socket.on('message_history', (history) => setMessages(history))
+    socket.on('message_history', (history) => {
+      setMessages(history)
+      // Filter out and reconstruct active emergencies for the UI banner
+      const activeEmergencies = history.filter(m => m.isEmergency && !m.resolved)
+      setEmergencies(activeEmergencies)
+      
+      const criticals = activeEmergencies.filter(m => m.urgencyLevel === 'CRITICAL')
+      if (criticals.length > 0) {
+        setActiveAlert(criticals[criticals.length - 1])
+      }
+    })
     socket.on('receive_message', (msg) => {
       if (msg.crossSection) return
 
@@ -180,11 +209,11 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
   }, [token]) // eslint-disable-line
 
   // ── Actions ──────────────────────────────────────────────────────────────────
-  const sendMessage = (text, imageFile, privateChatMode = 'controlled', highRes = false) => {
+  const sendMessage = (text, imageFile, privateChatMode = 'controlled', highRes = false, audioBlob = null) => {
     const socket = socketRef.current
     if (!socket) return
     const txt = text.trim()
-    if (!txt && !imageFile) return
+    if (!txt && !imageFile && !audioBlob) return
 
     if (imageFile) {
       if (imageFile.size > 2 * 1024 * 1024 && !highRes) {
@@ -228,7 +257,7 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
         socket.emit('send_message', {
           eventId: event.id, section,
           message: txt || '[Image]', imageUrl: localImgUrl,
-          privateChatMode, location: userLocation, highRes, tempId
+          privateChatMode, location: userLocation, highRes, tempId, triangulation
         }, (res) => {
           clearInterval(pTimer)
           if (res && res.success) {
@@ -246,8 +275,26 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
         })
       }
       reader.readAsDataURL(imageFile)
+    } else if (audioBlob) {
+      const tempId = 'temp_' + Date.now() + Math.floor(Math.random()*1000)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const localAudioUrl = e.target.result
+        const tempMsg = {
+          _id: tempId, tempId, isTemp: true, sender: anonymousId, anonymousId: anonymousId,
+          message: txt || '[Audio Message]', messageType: 'audio', audioUrl: localAudioUrl, time: new Date()
+        }
+        setMessages(prev => [...prev, tempMsg])
+        
+        // Let it upload silently in background, relying on backend to confirm
+        socket.emit('send_message', {
+          eventId: event.id, section, message: txt || '[Audio Message]', audioUrl: localAudioUrl,
+          privateChatMode, location: userLocation, tempId, triangulation
+        })
+      }
+      reader.readAsDataURL(audioBlob)
     } else {
-      socket.emit('send_message', { eventId: event.id, section, message: txt, privateChatMode, location: userLocation })
+      socket.emit('send_message', { eventId: event.id, section, message: txt, privateChatMode, location: userLocation, triangulation })
     }
   }
 
@@ -260,6 +307,14 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
     }
     setIsAnalyzingDraft(true)
     socket.emit('analyze_draft', { eventId: event.id, section, message: text })
+  }
+
+  const requestTranslation = (messageId, text) => {
+    socketRef.current?.emit('translate_message', { eventId: event.id, section, messageId, text })
+  }
+
+  const emitTyping = (isTyping) => {
+    socketRef.current?.emit(isTyping ? 'typing_start' : 'typing_stop', { eventId: event.id, section })
   }
 
   const requestPrivate = (targetSender, sourceMsgText, alertId = null) => {
@@ -305,9 +360,12 @@ export function useGroupSocket({ token, event, section, anonymousId }) {
     setLiveDraftEmergency,
     isAnalyzingDraft,
     uploadProgress,
+    typingUsers,
     // actions
     sendMessage,
     analyzeDraft,
+    emitTyping,
+    requestTranslation,
     requestPrivate,
     handleLeave,
     dismissAlert,

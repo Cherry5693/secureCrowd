@@ -103,6 +103,10 @@ ul { list-style: none; }
   60%     { transform: translateX(-4px); }
   80%     { transform: translateX(4px); }
 }
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-6px); opacity: 1; }
+}
 
 /* ── Utility Classes ───────────────────────────────────────── */
 .fade-in    { animation: fade-in 0.35s ease both; }
@@ -181,15 +185,19 @@ ul { list-style: none; }
 }
 
 /* ── Message Bubbles ───────────────────────────────────────── */
-.msg { padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 8px; animation: fade-in 0.25s ease; border-left: 3px solid transparent; }
-.msg-normal  { background: var(--bg-raised); border-left-color: var(--border); }
-.msg-high    { background: var(--high-dim); border-left-color: var(--high); }
+.msg-wrapper { display: flex; flex-direction: column; width: 100%; margin-bottom: 8px; }
+.msg { padding: 10px 14px; animation: fade-in 0.25s ease; width: fit-content; max-width: 80%; }
+
+.msg-normal  { background: var(--bg-raised); border: 1px solid var(--border); }
+.msg-high    { background: var(--high-dim); border: 1px solid var(--high); }
 .msg-critical {
   background: var(--critical-dim);
-  border-left-color: var(--critical);
+  border: 1px solid var(--critical);
   animation: pulse-critical 2s infinite;
 }
-.msg-mine    { background: var(--accent-dim); border-left-color: var(--accent); }
+.msg-mine    { background: var(--accent-dim); border: 1px solid var(--accent); align-self: flex-end; border-radius: 12px 12px 0 12px; }
+.msg-other   { align-self: flex-start; border-radius: 12px 12px 12px 0; }
+
 .msg-sender  { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 3px; }
 .msg-text    { font-size: 14px; color: var(--text-primary); line-height: 1.5; }
 .msg-time    { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
@@ -197,6 +205,23 @@ ul { list-style: none; }
 .badge-critical { background: var(--critical-dim); color: var(--critical); border: 1px solid var(--critical); }
 .badge-high     { background: var(--high-dim); color: var(--high); border: 1px solid var(--high); }
 .badge-normal   { background: var(--safe-dim); color: var(--safe); }
+
+/* ── Typing Indicator ──────────────────────────────────────── */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 6px;
+}
+.typing-indicator span {
+  width: 5px;
+  height: 5px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  animation: typing-bounce 1.2s infinite ease-in-out both;
+}
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
 
 /* ── Emergency Overlay ─────────────────────────────────────── */
 .emergency-overlay {

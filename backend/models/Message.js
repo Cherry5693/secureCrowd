@@ -8,7 +8,7 @@ const messageSchema = new mongoose.Schema({
   message: { type: String, required: true },
   messageType: {
     type: String,
-    enum: ['normal', 'emergency', 'private', 'image', 'announcement'],
+    enum: ['normal', 'emergency', 'private', 'image', 'audio', 'announcement'],
     default: 'normal',
   },
   urgencyLevel: {
@@ -30,9 +30,11 @@ const messageSchema = new mongoose.Schema({
     lat: Number,
     lng: Number,
   },
+  triangulation: String,
   resolved: { type: Boolean, default: false },
   resolvedBy: String,
   imageUrl: String,
+  audioUrl: String,
   time: { type: Date, default: Date.now },
 })
 
