@@ -75,14 +75,14 @@ const enforceGeoFencing = (req, res, next) => {
   const publicRoutes = ['/users/login', '/users/register', '/users/verify-email', '/users/resend-otp'];
   const isPublic = publicRoutes.some(route => req.originalUrl.includes(route));
   
-  if (!isPublic) {
-    if (!verifyJWT(req)) {
-      return res.status(401).json({ error: "Access token required or invalid" });
-    }
-  } else {
-    // Attempt to verify if token exists, but don't fail if missing
-    verifyJWT(req);
-  }
+  // if (!isPublic) {
+  //   if (!verifyJWT(req)) {
+  //     return res.status(401).json({ error: "Access token required or invalid" });
+  //   }
+  // } else {
+  //   // Attempt to verify if token exists, but don't fail if missing
+  //   verifyJWT(req);
+  // }
 
   const latRaw = req.headers["x-user-lat"];
   const lngRaw = req.headers["x-user-lng"];

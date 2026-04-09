@@ -120,6 +120,7 @@ router.put('/:id/close', verifyOrganizer, async (req, res) => {
 router.post('/join', async (req, res) => {
   try {
     const { qrToken } = req.body
+
     if (!qrToken) return res.status(400).json({ error: 'QR token required' })
 
     const event = await Event.findOne({ qrToken })
@@ -136,6 +137,8 @@ router.post('/join', async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     )
+
+    console.log(token)
 
     res.json({
       token,
