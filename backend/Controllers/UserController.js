@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken')
 const User = require('../models/User')
 const { verifyOrganizer } = require('../middleware/auth')
 const { sendVerificationOTP } = require('../services/emailService')
+const {sendResetPasswordLink} = require("../services/resetPasswordEmail")
 
 const signToken = (user) =>
   jwt.sign(
@@ -319,56 +320,18 @@ router.patch("/forgot-password", async (req, res) => {
     user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
     await user.save();
 
-    // 7. Create transporter (Gmail SMTP)
-    // const transporter = nodemailer.createTransport({
-    //   host: "smtp.gmail.com",
-    //   port: 587,
-    //   secure: false,
-    //   auth: {
-    //     user: process.env.EMAIL,
-    //     pass: process.env.EMAIL_PASS, // use App Password
-    //   },
-    // });
 
-    // 8. Reset URL (dynamic for production)
+    // 7. Reset URL (dynamic for production)
     const resetURL = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-    console.log(resetURL)
-    // 9. Email message
-    const message = `
-        Hi ${user.username},
 
-        You requested a password reset.
-
-        Click the link below to reset your password:
-        ${resetURL}
-
-        ⚠️ This link will expire in 15 minutes.
-
-        If you did not request this, please ignore this email.
-      `;
-
-    // 10. Send email safely
-    // try {
-    //   await transporter.sendMail({
-    //     to: user.email,
-    //     subject: "Password Reset Request",
-    //     text: message,
-    //   });
-
-    //   return res.status(200).json(genericResponse);
-
-    // } catch (emailError) {
-    //   console.error("Email Error:", emailError);
-
-    //   // rollback token if email fails
-    //   user.resetPasswordToken = undefined;
-    //   user.resetPasswordExpire = undefined;
-    //   await user.save();
-
-    //   return res.status(500).json({
-    //     message: "Failed to send reset email. Try again later.",
-    //   });
-    // }
+    sendResetPasswordLink(user.email, user.username, resetURL)
+      .then(() => {
+        console.log("Reset email sent");
+      })
+      .catch((err) => {
+        console.error("Email send failed:", err.message);
+      });
+  
 
     return res.status(200).json(genericResponse);
 
