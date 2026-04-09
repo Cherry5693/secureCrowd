@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { apiFetch } from '../utils/api'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -19,7 +20,7 @@ export default function EventJoin() {
     setError('')
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/api/events/join`, {
+      const res  = await apiFetch(`${API}/api/events/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ qrToken }),

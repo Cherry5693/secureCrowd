@@ -1,19 +1,23 @@
 const mongoose = require("mongoose")
 
 const connectDB = async () => {
-    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-    if (!uri) {
-        console.log("DB Error: MONGODB_URI is not configured in environment")
-        process.exit(1)
-    }
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
 
-    try {
-        await mongoose.connect(uri);
-        console.log("Database Connected")
-    } catch(err) {
-        console.log("DB Error: ", err)
-        process.exit(1)
-    }
+  if (!uri) {
+    throw new Error("MONGODB_URI is not configured in environment")
+  }
+
+  try {
+    const conn = await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 10000, 
+    })
+
+    console.log(` ✅ Database Connected: ${conn.connection.host}`)
+    return conn
+  } catch (err) {
+    console.error("DB Error:", err.message)
+    throw err 
+  }
 }
 
 module.exports = connectDB

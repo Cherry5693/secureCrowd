@@ -9,6 +9,8 @@ const userSchema = new mongoose.Schema({
     role: { type: String, enum: ['organizer', 'attendee', 'security'], default: 'organizer' },
     seat: { type: String, default: '' },
     section: { type: String, default: '' },
+    resetPasswordToken: String,
+    resetPasswordExpire: Date,
     createdAt: { type: Date, default: Date.now },
 })
 

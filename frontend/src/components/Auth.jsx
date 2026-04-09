@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../App.css'
 
+import toast from "react-hot-toast";
+import { apiFetch } from '../utils/api';
+
 const API = import.meta.env.VITE_API_URL
 
 export default function Auth() {
@@ -9,6 +12,8 @@ export default function Auth() {
   const [username, setUsername] = useState('')
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  const [showForgot, setShowForgot] = useState(false)
   const [verificationCode, setVerificationCode] = useState('')
   const [savedUsername, setSavedUsername] = useState('')
   const [registrationToken, setRegistrationToken] = useState(null)
@@ -24,7 +29,7 @@ export default function Auth() {
       if (!verificationCode.trim()) return setError('Verification code is required')
       setLoading(true)
       try {
-        const res = await fetch(`${API}/api/users/verify-email`, {
+        const res = await apiFetch(`${API}/api/users/verify-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: savedUsername, code: verificationCode, registrationToken }),
@@ -47,7 +52,7 @@ export default function Auth() {
     }
     setLoading(true)
     try {
-      const res = await fetch(`${API}/api/users/${mode}`, {
+      const res = await apiFetch(`${API}/api/users/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, email: mode === 'register' ? email : undefined }),
@@ -83,7 +88,7 @@ export default function Auth() {
   const handleResend = async () => {
     setError('')
     try {
-      const res = await fetch(`${API}/api/users/resend-otp`, {
+      const res = await apiFetch(`${API}/api/users/resend-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: savedUsername, registrationToken }),
@@ -96,6 +101,39 @@ export default function Auth() {
       setError('Network error')
     }
   }
+
+  const handleForgotPassword = async () => {
+    if (!resetEmail.trim()) {
+      return setError('Enter your email')
+    }
+
+    const toastId = toast.loading("Sending reset link...");
+
+    try {
+      const res = await apiFetch(`${API}/api/users/forgot-password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.message || "Failed to send reset link", { id: toastId });
+        return;
+      }
+
+      toast.success(data.message, { id: toastId });
+
+      setShowForgot(false);
+      setResetEmail('');
+      setError('');
+
+    } catch (err) {
+      toast.error("Something went wrong", { id: toastId });
+      setError('Network error');
+    }
+  };
 
   return (
     <div className="page-center">
@@ -138,6 +176,23 @@ export default function Auth() {
                   <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)}
                     placeholder="Enter password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
                 </div>
+                {mode === 'login' && (
+                  <p style={{ textAlign: 'right', marginTop: 6 }}>
+                    <button
+                      type="button"
+                      onClick={()=>setShowForgot(true)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#3b82f6',
+                        cursor: 'pointer',
+                        fontSize: 13
+                      }}
+                    >
+                      Forgot Password?
+                    </button>
+                  </p>
+                )}
               </>
             )}
 
@@ -174,6 +229,42 @@ export default function Auth() {
           </a>
         </div>
       </div>
+
+      {showForgot && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <h3 style={{ marginBottom: 12 }}>Reset Password</h3>
+
+            <input
+              className="input"
+              type="email"
+              placeholder="Enter your registered email"
+              value={resetEmail}
+              onChange={(e) => setResetEmail(e.target.value)}
+            />
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 15 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleForgotPassword}
+              >
+                Send Link
+              </button>
+
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setShowForgot(false)
+                  setResetEmail('')
+                  setError('')
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

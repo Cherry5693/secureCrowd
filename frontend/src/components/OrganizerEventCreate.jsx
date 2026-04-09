@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { apiFetch } from '../utils/api'
 import { QRCode } from 'react-qr-code'
 
 const API = import.meta.env.VITE_API_URL
@@ -13,8 +13,7 @@ export default function OrganizerEventCreate({ onCreated }) {
   const [created, setCreated] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
-  const navigate  = useNavigate()
-
+ 
   
   const organizer = JSON.parse(localStorage.getItem('organizerUser') || '{}')
   const joinUrl   = created ? `${window.location.origin}/join?token=${created.qrToken}` : ''
@@ -27,7 +26,7 @@ export default function OrganizerEventCreate({ onCreated }) {
 
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/api/events/create`, {
+      const res  = await apiFetch(`${API}/api/events/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${organizer.token}` },
         body: JSON.stringify({

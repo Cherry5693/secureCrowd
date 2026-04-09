@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import PrivateChat from './PrivateChat'
 import TacticalMap from './TacticalMap'
+import { apiFetch } from '../utils/api'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -25,11 +26,12 @@ export default function SecurityDashboard() {
     if (!staff.token) return navigate('/auth')
     setLoading(true)
     try {
-      const r = await fetch(`${API}/api/events`, {
+      const r = await apiFetch(`${API}/api/events`, {
         headers: { Authorization: `Bearer ${staff.token}` },
       })
       if (r.status === 401) {
         localStorage.removeItem('organizerUser')
+        localStorage.removeItem('geo_location')
         return navigate('/auth')
       }
       const data = await r.json()
@@ -91,6 +93,7 @@ export default function SecurityDashboard() {
   const handleLogout = () => {
     socketRef.current?.disconnect()
     localStorage.removeItem('organizerUser')
+    localStorage.removeItem('geo_location')
     navigate('/auth')
   }
 

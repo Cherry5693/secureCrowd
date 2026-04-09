@@ -6,6 +6,9 @@ import OrganizerEventCreate from './OrganizerEventCreate'
 import SecurityTeamManager from './SecurityTeamManager'
 import TacticalMap from './TacticalMap'
 
+import Navbar from "../components/navbar/Navbar.jsx"
+import { apiFetch } from '../utils/api'
+
 const API = import.meta.env.VITE_API_URL
 
 const formatTime = (t) => new Date(t).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
@@ -45,11 +48,12 @@ export default function OrganizerDashboard() {
     }
     setLoading(true)
     try {
-      const r = await fetch(`${API}/api/events`, {
+      const r = await apiFetch(`${API}/api/events`, {
         headers: { Authorization: `Bearer ${organizer.token}` },
       })
       if (r.status === 401) {
         localStorage.removeItem('organizerUser')
+        localStorage.removeItem('geo_location')
         navigate('/auth')
         return
       }
@@ -72,7 +76,7 @@ export default function OrganizerDashboard() {
     if (!window.confirm('Are you sure you want to deactivate this event? All attendee connections will be permanently severed.')) return
 
     try {
-      const r = await fetch(`${API}/api/events/${eventId}/close`, {
+      const r = await apiFetch(`${API}/api/events/${eventId}/close`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${organizer.token}` }
       })
@@ -121,6 +125,7 @@ export default function OrganizerDashboard() {
   const handleLogout = () => {
     socketRef.current?.disconnect()
     localStorage.removeItem('organizerUser')
+    localStorage.removeItem('geo_location')
     navigate('/auth')
   }
 
@@ -150,17 +155,7 @@ export default function OrganizerDashboard() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
 
       {/* Navbar */}
-      <nav className="navbar">
-        <div className="navbar-logo">
-          <span>🛡️</span>
-          <span>SecureCrowd</span>
-          <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 13 }}> / Organizer</span>
-        </div>
-        <div className="nav-right">
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>👤 {organizer.username}</span>
-          <button className="btn btn-ghost btn-sm" onClick={handleLogout}>Logout</button>
-        </div>
-      </nav>
+      <Navbar handleLogout={handleLogout} />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
