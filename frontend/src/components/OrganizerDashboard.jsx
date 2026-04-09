@@ -5,7 +5,9 @@ import { QRCode } from 'react-qr-code'
 import OrganizerEventCreate from './OrganizerEventCreate'
 import SecurityTeamManager from './SecurityTeamManager'
 import TacticalMap from './TacticalMap'
+
 import Navbar from "../components/navbar/Navbar.jsx"
+import { apiFetch } from '../utils/api'
 
 const API = import.meta.env.VITE_API_URL
 
@@ -46,11 +48,12 @@ export default function OrganizerDashboard() {
     }
     setLoading(true)
     try {
-      const r = await fetch(`${API}/api/events`, {
+      const r = await apiFetch(`${API}/api/events`, {
         headers: { Authorization: `Bearer ${organizer.token}` },
       })
       if (r.status === 401) {
         localStorage.removeItem('organizerUser')
+        localStorage.removeItem('geo_location')
         navigate('/auth')
         return
       }
@@ -73,7 +76,7 @@ export default function OrganizerDashboard() {
     if (!window.confirm('Are you sure you want to deactivate this event? All attendee connections will be permanently severed.')) return
 
     try {
-      const r = await fetch(`${API}/api/events/${eventId}/close`, {
+      const r = await apiFetch(`${API}/api/events/${eventId}/close`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${organizer.token}` }
       })
@@ -122,6 +125,7 @@ export default function OrganizerDashboard() {
   const handleLogout = () => {
     socketRef.current?.disconnect()
     localStorage.removeItem('organizerUser')
+    localStorage.removeItem('geo_location')
     navigate('/auth')
   }
 

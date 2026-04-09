@@ -8,6 +8,9 @@ import OrganizerDashboard from './components/OrganizerDashboard'
 import SecurityDashboard from './components/SecurityDashboard'
 import ResetPassword from './components/resetModal/ResetPassword'
 
+import { LocationProvider } from './hooks/useLocation'
+import LocationModal from './components/LocationModal'
+
 // ── Helpers ─────────────────────────────────────
 const getStaff = () => {
   try { return JSON.parse(localStorage.getItem('organizerUser')) } 
@@ -40,7 +43,8 @@ export default function App() {
   const attendee = getAttendee()
 
   return (
-    <>
+    <LocationProvider>
+      <LocationModal />
       {/* Global Toast System */}
       <Toaster
         position="top-right"
@@ -56,6 +60,7 @@ export default function App() {
 
       {/* Routes */}
       <Routes>
+
 
         <Route path="/" element={
           staff?.role === 'security' ? <Navigate to="/security" replace /> :
@@ -107,6 +112,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
-    </>
+    </LocationProvider>
   )
 }

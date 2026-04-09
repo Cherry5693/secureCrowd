@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { apiFetch } from '../../utils/api'
 
 const API = import.meta.env.VITE_API_URL;
 
@@ -34,7 +35,7 @@ export default function ResetPassword() {
     const toastId = toast.loading("Updating password...");
 
     try {
-      const res = await fetch(`${API}/api/users/reset-password/${token}`, {
+      const res = await apiFetch(`${API}/api/users/reset-password/${token}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),

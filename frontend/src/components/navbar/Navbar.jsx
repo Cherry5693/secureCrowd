@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { LogOut,KeyRound } from "lucide-react";
 import toast from "react-hot-toast";
+import { apiFetch } from '../../utils/api'
 
 import ResetPasswordModal from "../../components/resetModal/ResetPasswordModal.jsx";
 const API = import.meta.env.VITE_API_URL
@@ -13,7 +14,7 @@ const Navbar = ({ handleLogout }) => {
         const toastId = toast.loading("Updating password...");
 
         try {
-            const res = await fetch(`${API}/api/users/reset-password`, {
+            const res = await apiFetch(`${API}/api/users/reset-password`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json',
                         Authorization: `Bearer ${storedUser?.token}` 

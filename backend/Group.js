@@ -23,6 +23,10 @@ app.use(cors({
 app.use(express.json())
 
 // ── Routes ───────────────────────────────────────────────
+const { geoRateLimiter, enforceGeoFencing } = require('./middleware/geoFencing.middleware');
+
+app.use('/api', geoRateLimiter, enforceGeoFencing);
+
 app.use('/api/users', userController)
 app.use('/api/events', eventController)
 

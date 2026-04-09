@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-
+import { apiFetch } from '../utils/api'
 const API = import.meta.env.VITE_API_URL
 
 export default function SecurityTeamManager({ organizerToken }) {
@@ -14,7 +14,7 @@ export default function SecurityTeamManager({ organizerToken }) {
   const fetchGuards = async () => {
     setLoading(true)
     try {
-      const r = await fetch(`${API}/api/users/security`, {
+      const r = await apiFetch(`${API}/api/users/security`, {
         headers: { Authorization: `Bearer ${organizerToken}` }
       })
       if (r.ok) {
@@ -41,7 +41,7 @@ export default function SecurityTeamManager({ organizerToken }) {
     }
     setIsCreating(true)
     try {
-      const r = await fetch(`${API}/api/users/security`, {
+      const r = await apiFetch(`${API}/api/users/security`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -67,7 +67,7 @@ export default function SecurityTeamManager({ organizerToken }) {
     if (!window.confirm(`Are you sure you want to completely revoke access for '${guardName}'?`)) return
     
     try {
-      const r = await fetch(`${API}/api/users/security/${id}`, {
+      const r = await apiFetch(`${API}/api/users/security/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${organizerToken}` }
       })

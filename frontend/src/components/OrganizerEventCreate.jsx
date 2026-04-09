@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiFetch } from '../utils/api'
 import { QRCode } from 'react-qr-code'
 
 const API = import.meta.env.VITE_API_URL
@@ -25,7 +26,7 @@ export default function OrganizerEventCreate({ onCreated }) {
 
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/api/events/create`, {
+      const res  = await apiFetch(`${API}/api/events/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${organizer.token}` },
         body: JSON.stringify({

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import '../App.css'
 
 import toast from "react-hot-toast";
+import { apiFetch } from '../utils/api';
 
 const API = import.meta.env.VITE_API_URL
 
@@ -28,7 +29,7 @@ export default function Auth() {
       if (!verificationCode.trim()) return setError('Verification code is required')
       setLoading(true)
       try {
-        const res = await fetch(`${API}/api/users/verify-email`, {
+        const res = await apiFetch(`${API}/api/users/verify-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: savedUsername, code: verificationCode, registrationToken }),
@@ -51,7 +52,7 @@ export default function Auth() {
     }
     setLoading(true)
     try {
-      const res = await fetch(`${API}/api/users/${mode}`, {
+      const res = await apiFetch(`${API}/api/users/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password, email: mode === 'register' ? email : undefined }),
@@ -87,7 +88,7 @@ export default function Auth() {
   const handleResend = async () => {
     setError('')
     try {
-      const res = await fetch(`${API}/api/users/resend-otp`, {
+      const res = await apiFetch(`${API}/api/users/resend-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: savedUsername, registrationToken }),
@@ -109,7 +110,7 @@ export default function Auth() {
     const toastId = toast.loading("Sending reset link...");
 
     try {
-      const res = await fetch(`${API}/api/users/forgot-password`, {
+      const res = await apiFetch(`${API}/api/users/forgot-password`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: resetEmail }),
