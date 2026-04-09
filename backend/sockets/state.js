@@ -54,8 +54,8 @@ const removeMember = (eventId, section, socketId) => {
 // ── Rate limiter ──────────────────────────────────────────────────────────────
 
 const rateLimits  = {}   // { socketId: [timestamps] }
-const RATE_MAX    = 5
-const RATE_WINDOW = 10_000 // ms
+const RATE_MAX    = 1
+const RATE_WINDOW = 30_000 // ms
 
 const isRateLimited = (socketId) => {
   const now   = Date.now()

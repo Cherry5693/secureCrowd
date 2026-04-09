@@ -5,6 +5,7 @@ import { QRCode } from 'react-qr-code'
 import OrganizerEventCreate from './OrganizerEventCreate'
 import SecurityTeamManager from './SecurityTeamManager'
 import TacticalMap from './TacticalMap'
+import Navbar from "../components/navbar/Navbar.jsx"
 
 const API = import.meta.env.VITE_API_URL
 
@@ -150,17 +151,7 @@ export default function OrganizerDashboard() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
 
       {/* Navbar */}
-      <nav className="navbar">
-        <div className="navbar-logo">
-          <span>🛡️</span>
-          <span>SecureCrowd</span>
-          <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 13 }}> / Organizer</span>
-        </div>
-        <div className="nav-right">
-          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>👤 {organizer.username}</span>
-          <button className="btn btn-ghost btn-sm" onClick={handleLogout}>Logout</button>
-        </div>
-      </nav>
+      <Navbar handleLogout={handleLogout} />
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 

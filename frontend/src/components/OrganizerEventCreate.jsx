@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { QRCode } from 'react-qr-code'
 
 const API = import.meta.env.VITE_API_URL
@@ -13,8 +12,7 @@ export default function OrganizerEventCreate({ onCreated }) {
   const [created, setCreated] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
-  const navigate  = useNavigate()
-
+ 
   
   const organizer = JSON.parse(localStorage.getItem('organizerUser') || '{}')
   const joinUrl   = created ? `${window.location.origin}/join?token=${created.qrToken}` : ''

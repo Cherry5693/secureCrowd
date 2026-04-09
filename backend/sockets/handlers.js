@@ -117,7 +117,7 @@ module.exports = function registerSocketHandlers(io, socket) {
   socket.on('send_message', async ({ eventId, section, message, imageUrl, audioUrl, privateChatMode = 'controlled', location, highRes, tempId, triangulation }, callback) => {
     if (!message?.trim() && !imageUrl && !audioUrl) return
 
-    if (state.isRateLimited(socket.id)) {
+    if (state.isRateLimited(socket.anonymousId)) {
       if (typeof callback === 'function') callback({ success: false, error: 'Rate limited' })
       return socket.emit('rate_limited', {
         message: 'You are sending messages too fast. Please wait a moment.',

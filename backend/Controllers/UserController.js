@@ -1,6 +1,8 @@
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
+const nodemailer = require('nodemailer')
+const crypto = require('crypto')
 const jwt = require('jsonwebtoken')
 const User = require('../models/User')
 const { verifyOrganizer } = require('../middleware/auth')
@@ -26,7 +28,7 @@ router.post('/register', async (req, res) => {
     const existingEmail = await User.findOne({ email })
     if (existingEmail) return res.status(409).json({ error: 'Email already registered' })
 
-    const hashed = await bcrypt.hash(password, 10)
+    const hashed = await bcrypt.hash(password, 12)
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString()
 
     // Sign a temporary registration token (valid for 15 mins) - Stateless setup
@@ -249,5 +251,184 @@ router.delete('/security/:id', verifyOrganizer, async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
+
+router.patch('/reset-password', verifyOrganizer, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+    
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const match = await bcrypt.compare(oldPassword, user.password);
+
+    if (!match) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    user.password = hashed;
+
+    await user.save();
+
+    res.status(200).json({ message: "Password updated successfully" });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.patch("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // 1. Validate input
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    // 2. Find user
+    const user = await User.findOne({ email });
+
+    // 3. Always send same response (prevent user enumeration)
+    const genericResponse = {
+      message: "If an account with that email exists, a reset link has been sent.",
+    };
+
+    if (!user) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // 4. Generate reset token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    // 5. Hash token before saving
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    // 6. Save token + expiry (15 mins)
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpire = Date.now() + 15 * 60 * 1000;
+    await user.save();
+
+    // 7. Create transporter (Gmail SMTP)
+    // const transporter = nodemailer.createTransport({
+    //   host: "smtp.gmail.com",
+    //   port: 587,
+    //   secure: false,
+    //   auth: {
+    //     user: process.env.EMAIL,
+    //     pass: process.env.EMAIL_PASS, // use App Password
+    //   },
+    // });
+
+    // 8. Reset URL (dynamic for production)
+    const resetURL = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+    console.log(resetURL)
+    // 9. Email message
+    const message = `
+        Hi ${user.username},
+
+        You requested a password reset.
+
+        Click the link below to reset your password:
+        ${resetURL}
+
+        ⚠️ This link will expire in 15 minutes.
+
+        If you did not request this, please ignore this email.
+      `;
+
+    // 10. Send email safely
+    // try {
+    //   await transporter.sendMail({
+    //     to: user.email,
+    //     subject: "Password Reset Request",
+    //     text: message,
+    //   });
+
+    //   return res.status(200).json(genericResponse);
+
+    // } catch (emailError) {
+    //   console.error("Email Error:", emailError);
+
+    //   // rollback token if email fails
+    //   user.resetPasswordToken = undefined;
+    //   user.resetPasswordExpire = undefined;
+    //   await user.save();
+
+    //   return res.status(500).json({
+    //     message: "Failed to send reset email. Try again later.",
+    //   });
+    // }
+
+    return res.status(200).json(genericResponse);
+
+
+  } catch (error) {
+    console.error("Server Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.patch("/reset-password/:token", async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    // 1. Validate input
+    if (!password) {
+      return res.status(400).json({ message: "Password is required" });
+    }
+
+    if (password.length < 4) {
+      return res.status(400).json({ message: "Password must be at least 4 characters" });
+    }
+
+    // 2. Hash token (same way as stored)
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    // 3. Find user with valid token + not expired
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: "Invalid or expired reset token",
+      });
+    }
+
+    // 4. Update password
+    const hashedPassword = await bcrypt.hash(password, 12);
+    user.password = hashedPassword;
+
+    // 5. Clear reset fields
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      message: "Password reset successful. You can now log in.",
+    });
+
+  } catch (error) {
+    console.error("Reset Password Error:", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
 
 module.exports = router

@@ -12,34 +12,54 @@ const eventController = require('./Controllers/EventController')
 const registerSocketHandlers = require('./sockets/handlers')
 const { initCleanupJob } = require('./cron/eventCleanup')
 
-// ── App Init ────────────────────────────────────────────────────────────────
+// ── App Init ─────────────────────────────────────────────
 const app = express()
-app.use(cors())
+
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+}))
+
 app.use(express.json())
 
-// ── Database ────────────────────────────────────────────────────────────────
-connectDB()
-
-// ── Server & Socket ────────────────────────────────────────────────────────
-const server = http.createServer(app)
-const io = new Server(server, { cors: { origin: '*' } })
-app.set('io', io)
-
-// ── REST Routes ─────────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.json({ status: 'SecureCrowd server running', version: '2.0' }))
+// ── Routes ───────────────────────────────────────────────
 app.use('/api/users', userController)
 app.use('/api/events', eventController)
 
-// ── Socket Core ─────────────────────────────────────────────────────────────
-io.use(verifySocketToken)
+// ── Start Function (IMPORTANT) ───────────────────────────
+const startServer = async () => {
+  try {
+   
+    await connectDB()
 
-io.on('connection', (socket) => {
-  // Delegate all functional socket logic to handlers module
-  registerSocketHandlers(io, socket)
-})
+    const server = http.createServer(app)
 
-// ── Start ───────────────────────────────────────────────────────────────────
-initCleanupJob(io);
+    const io = new Server(server, {
+      cors: { origin: '*' }
+    })
 
-const PORT = process.env.PORT || 5000
-server.listen(PORT, () => console.log(`🛡️  SecureCrowd server running on port ${PORT}`))
+    app.set('io', io)
+
+    io.use(verifySocketToken)
+
+    io.on('connection', (socket) => {
+      registerSocketHandlers(io, socket)
+    })
+
+
+    initCleanupJob(io)
+
+    const PORT = process.env.PORT || 5000
+
+    server.listen(PORT, () => {
+      console.log(`SecureCrowd server running on port ${PORT}`)
+    })
+
+  } catch (err) {
+    console.error("Server failed to start:", err.message)
+    process.exit(1)
+  }
+}
+
+
+startServer()
